@@ -11,7 +11,10 @@ from collections import OrderedDict
 
 import numpy as np
 import yaml
+import threading
+import queue
 from numba import njit
+from dataclasses import dataclass
 
 # Try to use fast c parser based on libyaml
 try:
@@ -337,6 +340,59 @@ class MaskObject(dict):
         self._create_shift_pattern(pattern)
         return self.shift_patterns[pattern]._get_mask_steps() * fe_multiplier
 
+    def apply_prebuilt_update(self, prepared, write=True):
+        """
+        Apply a prebuilt command bundle and then refresh software state.
+        prepared is expected to contain:
+            - 'cmds': list of np.uint8 arrays
+            - 'next_masks': optional dict of mask arrays
+        """
+        cmds = prepared.get('cmds', [])
+        next_masks = prepared.get('next_masks', None)
+
+        if write:
+            for cmd in cmds:
+                if cmd is not None and len(cmd) > 0:
+                    self.chip.write_command(cmd)
+
+        if next_masks is not None:
+            for name, mask in next_masks.items():
+                self[name][:] = mask[:]
+                self.was[name][:] = mask[:]
+        else:
+            for name, mask in self.items():
+                self.was[name][:] = mask[:]
+
+    def shift_threaded(self, masks=['enable'], pattern='default', skip_empty=True, prefetch=20):
+        """
+        Threaded shift with prefetch queue.
+        """
+        original_masks = {name: np.copy(mask) for name, mask in self.items()}
+        worker = StepPrecomputer(self, masks, pattern, skip_empty=skip_empty, queue_size=prefetch)
+        thread = threading.Thread(target=worker.run, args=(original_masks,), daemon=True)
+        thread.start()
+
+        try:
+            while True:
+                prepared = worker.queue.get()
+                if prepared is None:
+                    break
+
+                self.apply_prebuilt_update(
+                    {
+                        'cmds': prepared["cmds"],
+                        'next_masks': None,
+                    },
+                    write=True
+                )
+                yield prepared["fe"], prepared["active_pixels"]
+
+        finally:
+            thread.join()
+            for name, mask in original_masks.items():
+                self[name][:] = mask[:]
+            self.was = {name: np.copy(mask) for name, mask in original_masks.items()}
+
     def shift(self, masks=['enable'], pattern='default', cache=False, skip_empty=True):
         '''
             This function is called from scan loops to loop over 1 FE at a time and
@@ -488,23 +544,35 @@ class MaskObject(dict):
         packed = np.packbits(row_or_2d, axis=1, bitorder='little')
         return packed.view(np.uint16).reshape(-1)
 
-    def update(self, force=False):
-        ''' Write the actual pixel register configuration
 
-            Only write changes or the complete matrix
-        '''
+    def build_update_commands_from_masks(self, next_masks, prev_masks, force=False):
+        """
+        Dry-run version of update():
+        build command buffers from explicit next/previous mask snapshots,
+        but do not write to hardware and do not mutate self.was.
+        """
         if force and self.chip.daq.board_version == 'SIMULATION':
             return []
 
-        self._find_changes()
+        dimensions = self.dimensions
+
         if force:
-            inj_write_mask = np.ones(self.dimensions, bool)
-            pix_write_mask = np.ones(self.dimensions, bool)
-            hor_write_mask = np.ones(self.dimensions, bool)
+            inj_write_mask = np.ones(dimensions, dtype=bool)
+            pix_write_mask = np.ones(dimensions, dtype=bool)
+            hor_write_mask = np.ones(dimensions, dtype=bool)
         else:
-            inj_write_mask = self.inj_to_write
-            pix_write_mask = self.pix_to_write
-            hor_write_mask = self.hor_to_write
+            pix_write_mask = np.zeros(dimensions, dtype=bool)
+            inj_write_mask = np.zeros(dimensions, dtype=bool)
+            hor_write_mask = np.zeros(dimensions, dtype=bool)
+
+            for name, mask in next_masks.items():
+                diff = np.not_equal(mask, prev_masks[name])
+                if 'injection' in name:
+                    inj_write_mask |= diff
+                elif 'hitor' in name:
+                    hor_write_mask |= diff
+                else:
+                    pix_write_mask |= diff
 
         inj_to_write = np.column_stack(np.where(inj_write_mask))
         pix_to_write = np.column_stack(np.where(pix_write_mask))
@@ -519,73 +587,125 @@ class MaskObject(dict):
             pixel_groups = np.unique(
                 np.column_stack((pix_to_write[:, 0] // 4, pix_to_write[:, 1])),
                 axis=0
-            )
+            ).astype(np.int64)
 
-            colgroups = pixel_groups[:, 0].astype(np.int64)
-            rows = pixel_groups[:, 1].astype(np.int64)
+            colgroups = pixel_groups[:, 0]
+            rows = pixel_groups[:, 1]
+
+            cols = colgroups[:, None] * 4 + np.array([3, 2, 1, 0], dtype=np.int64)
+            enable = next_masks['enable'][cols, rows[:, None]].astype(np.uint16)
+            tdac = next_masks['tdac'][cols, rows[:, None]].astype(np.uint16)
+            nibbles = tdac * enable
+
+            portal_values = (
+                (nibbles[:, 0] << 12)
+                | (nibbles[:, 1] << 8)
+                | (nibbles[:, 2] << 4)
+                | nibbles[:, 3]
+            ).astype(np.uint16)
 
             packed = ((colgroups & 0x7f) << 9) | (rows & 0x1ff)
-            portal_values = self.get_pixel_portal_data_vec(colgroups, rows)
 
             full_cmd = []
             for addr_value, portal_value in zip(packed, portal_values):
                 full_cmd += [cmd_register, cmd_data] + list(encode_cmd(17, int(addr_value)))
-                full_cmd += [cmd_register, cmd_data] + list(encode_cmd(16, int(portal_value))) # 16 is PIXEL_PORTAL 
+                full_cmd += [cmd_register, cmd_data] + list(encode_cmd(16, int(portal_value)))
                 full_cmd += sync
 
-            full_cmd = np.array(full_cmd, dtype=np.uint8)
-            self.chip.write_command(full_cmd)
-            data.append(full_cmd)
+            data.append(np.array(full_cmd, dtype=np.uint8))
+
         if len(inj_to_write) > 0:
             inj_groups = np.unique(
                 np.column_stack((inj_to_write[:, 0] // 16, inj_to_write[:, 1] // 16)),
                 axis=0
-            )
+            ).astype(np.int64)
 
-            colgroups_u = np.unique(inj_groups[:, 0]).astype(np.int64)
-            rowgroups_u = np.unique(inj_groups[:, 1]).astype(np.int64)
+            colgroups = inj_groups[:, 0]
+            rowgroups = inj_groups[:, 1]
 
-            colgroup_data_all = self.get_column_group_data_all('injection')
-            rowgroup_data_all = self.get_row_group_data_all('injection')
+            col_or = np.logical_or.reduce(next_masks['injection'], axis=1)
+            row_or = np.logical_or.reduce(next_masks['injection'], axis=0)
+
+            colgroup_data_all = np.packbits(
+                col_or.reshape(-1, 16), axis=1, bitorder='little'
+            ).view(np.uint16).reshape(-1)
+
+            rowgroup_data_all = np.packbits(
+                row_or.reshape(-1, 16), axis=1, bitorder='little'
+            ).view(np.uint16).reshape(-1)
+
+            col_values = colgroup_data_all[colgroups]
+            row_values = rowgroup_data_all[rowgroups]
 
             full_cmd = []
-            for colgroup, rowgroup in zip(colgroups_u, rowgroups_u):
+            for colgroup, rowgroup, colval, rowval in zip(colgroups, rowgroups, col_values, row_values):
                 full_cmd += [cmd_register, cmd_data] + list(
-                    encode_cmd(82 + int(colgroup), int(colgroup_data_all[int(colgroup)]))
+                    encode_cmd(82 + int(colgroup), int(colval))
                 )
                 full_cmd += [cmd_register, cmd_data] + list(
-                    encode_cmd(114 + int(rowgroup), int(rowgroup_data_all[int(rowgroup)]))
+                    encode_cmd(114 + int(rowgroup), int(rowval))
                 )
                 full_cmd += sync
 
-            full_cmd = np.array(full_cmd, dtype=np.uint8)
-            self.chip.write_command(full_cmd)
-            data.append(full_cmd)
+            data.append(np.array(full_cmd, dtype=np.uint8))
+
         if len(hor_to_write) > 0:
             hor_groups = np.unique(
                 np.column_stack((hor_to_write[:, 0] // 16, hor_to_write[:, 1] // 16)),
                 axis=0
-            )
+            ).astype(np.int64)
 
-            colgroups_u = np.unique(hor_groups[:, 0]).astype(np.int64)
-            rowgroups_u = np.unique(hor_groups[:, 1]).astype(np.int64)
+            colgroups = hor_groups[:, 0]
+            rowgroups = hor_groups[:, 1]
 
-            colgroup_data_all = self.get_column_group_data_all('hitor')
-            rowgroup_data_all = self.get_row_group_data_all('hitor')
+            col_or = np.logical_or.reduce(next_masks['hitor'], axis=1)
+            row_or = np.logical_or.reduce(next_masks['hitor'], axis=0)
+
+            colgroup_data_all = np.packbits(
+                col_or.reshape(-1, 16), axis=1, bitorder='little'
+            ).view(np.uint16).reshape(-1)
+
+            rowgroup_data_all = np.packbits(
+                row_or.reshape(-1, 16), axis=1, bitorder='little'
+            ).view(np.uint16).reshape(-1)
+
+            col_values = colgroup_data_all[colgroups]
+            row_values = rowgroup_data_all[rowgroups]
 
             full_cmd = []
-            for colgroup, rowgroup in zip(colgroups_u, rowgroups_u):
+            for colgroup, rowgroup, colval, rowval in zip(colgroups, rowgroups, col_values, row_values):
                 full_cmd += [cmd_register, cmd_data] + list(
-                    encode_cmd(18 + int(colgroup), int(colgroup_data_all[int(colgroup)]))
+                    encode_cmd(18 + int(colgroup), int(colval))
                 )
                 full_cmd += [cmd_register, cmd_data] + list(
-                    encode_cmd(50 + int(rowgroup), int(rowgroup_data_all[int(rowgroup)]))
+                    encode_cmd(50 + int(rowgroup), int(rowval))
                 )
                 full_cmd += sync
 
-            full_cmd = np.array(full_cmd, dtype=np.uint8)
-            self.chip.write_command(full_cmd)
-            data.append(full_cmd)
+            data.append(np.array(full_cmd, dtype=np.uint8))
+
+        return data
+
+    def update(self, force=False):
+        ''' Write the actual pixel register configuration
+
+            Only write changes or the complete matrix
+        '''
+        if force and self.chip.daq.board_version == 'SIMULATION':
+            return []
+
+        next_masks = {name: mask for name, mask in self.items()}
+        prev_masks = self.was
+
+        data = self.build_update_commands_from_masks(
+            next_masks=next_masks,
+            prev_masks=prev_masks,
+            force=force,
+        )
+
+        for cmd in data:
+            if cmd is not None and len(cmd) > 0:
+                self.chip.write_command(cmd)
 
         for name, mask in self.items():
             self.was[name][:] = mask[:]
@@ -962,25 +1082,35 @@ class TJMonoPix2():
             Parameters:
             ----------
                 data : list
-                    Up to [get_cmd_size()] bytes
+                    Up to [get_cmd_size()] bytes per hardware transfer
                 repetitions : integer
                     Sets repetitions of the current request. 1...2^16-1. Default value = 1.
                 wait_for_done : boolean
-                    Wait for completion after sending the command. Not advisable in case of repetition mode.
+                    Wait for completion after sending the command.
                 wait_for_ready : boolean
                     Wait for completion of preceding commands before sending the command.
+                max_chunk_size : integer
+                    Maximum chunk size per transfer, default 4096 bytes.
         '''
-        if isinstance(data[0], list):
-            for indata in data:
-                self.write_command(indata, repetitions, wait_for_done)
+        if not any(data):
             return
 
-        assert (0 < repetitions < 65536), "Repetition value must be 0<n<2^16"
-        if repetitions > 1:
-            self.log.debug("Repeating command %i times." % (repetitions))
+        # Preserve existing support for list-of-lists input
+        if isinstance(data[0], list):
+            for i, indata in enumerate(data):
+                self.write_command(
+                    indata,
+                    repetitions=repetitions,
+                    wait_for_done=wait_for_done if i == len(data) - 1 else True,
+                    wait_for_ready=wait_for_ready if i == 0 else False,
+                    max_chunk_size=max_chunk_size
+                )
+            return
+
+        assert 0 < repetitions < 65536, "Repetition value must be 0<n<2^16"
 
         if wait_for_ready:
-            while (not self.daq['cmd'].is_done()):
+            while not self.daq['cmd'].is_done():
                 pass
 
         for start in range(0, len(data), max_chunk_size):
@@ -1143,3 +1273,76 @@ class TJMonoPix2():
 if __name__ == '__main__':
     chip = TJMonoPix2()
     chip.init()
+
+@dataclass
+class StepJob:
+    fe: str
+    step_idx: int
+    cmds: list
+    active_pixels: tuple
+
+class StepPrecomputer:
+    def __init__(self, mask_obj, masks, pattern, skip_empty=True, queue_size=2):
+        self.mask_obj = mask_obj
+        self.masks = masks
+        self.pattern = pattern
+        self.skip_empty = skip_empty
+        self.queue = queue.Queue(maxsize=queue_size)
+        self.stop = threading.Event()
+
+    def run(self, original_masks):
+        try:
+            self.mask_obj._create_shift_pattern(self.pattern)
+            prev_masks = {name: np.copy(self.mask_obj.was[name]) for name in self.mask_obj.keys()}
+
+            for fe, cols in self.mask_obj.chip.flavor_cols.items():
+                fe_mask = np.zeros(self.mask_obj.dimensions, dtype=bool)
+                fe_mask[cols[0]:cols[-1] + 1, :] = True
+
+                if not np.any(original_masks['enable'] & fe_mask):
+                    continue
+
+                self.mask_obj.shift_patterns[self.pattern].reset()
+
+                for step_idx, pat in enumerate(self.mask_obj.shift_patterns[self.pattern]):
+                    next_masks = {}
+
+                    for name in original_masks:
+                        next_masks[name] = original_masks[name]
+
+                    if isinstance(pat, np.ndarray):
+                        for name in self.masks:
+                            next_masks[name] = original_masks[name] & pat & fe_mask
+                    else:
+                        for name, mask in pat.items():
+                            next_masks[name] = original_masks[name] & mask & fe_mask
+
+                    active_pixels = np.where(next_masks['enable'])
+
+                    if self.skip_empty and not np.any(next_masks['enable']):
+                        self.queue.put({
+                            "fe": "skipped",
+                            "step_idx": step_idx,
+                            "cmds": [],
+                            "active_pixels": active_pixels,
+                        })
+                        prev_masks = next_masks
+                        continue
+
+                    cmds = self.mask_obj.build_update_commands_from_masks(
+                        next_masks=next_masks,
+                        prev_masks=prev_masks,
+                        force=False,
+                    )
+
+                    self.queue.put({
+                        "fe": fe,
+                        "step_idx": step_idx,
+                        "cmds": cmds,
+                        "active_pixels": active_pixels,
+                    })
+
+                    prev_masks = next_masks
+
+        finally:
+            self.queue.put(None)
