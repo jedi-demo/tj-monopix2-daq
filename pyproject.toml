@@ -13,7 +13,7 @@ authors = [
     {name = "Christian Bespin", email="bespin@physik.uni-bonn.de"}
 ]
 dependencies = [
-"basil-daq>=3.0.0", 
+"basil-daq>=3.3.0", 
 "coloredlogs", 
 "gitpython", 
 "numba", 
@@ -25,7 +25,8 @@ dependencies = [
 "pyzmq", 
 "tables", 
 "tqdm", 
-"scipy"
+"scipy",
+"setuptools<82"
 ]
 
 [tool.setuptools]

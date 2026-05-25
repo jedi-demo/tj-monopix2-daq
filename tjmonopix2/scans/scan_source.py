@@ -13,10 +13,10 @@ from tjmonopix2.analysis import analysis, plotting
 from tjmonopix2.system.scan_base import ScanBase
 
 scan_configuration = {
-    'start_column': 0,
-    'stop_column': 224,
+    'start_column': 310,
+    'stop_column': 311,
     'start_row': 0,
-    'stop_row': 512,
+    'stop_row': 10,
 
     'scan_timeout': 30,    # Timeout for scan after which the scan will be stopped, in seconds; if False no limit on scan time
 
@@ -34,6 +34,7 @@ class SourceScan(ScanBase):
         self.chip.masks['enable'][start_column:stop_column, start_row:stop_row] = True
         self.chip.masks.apply_disable_mask()
         self.chip.masks.update()
+        self.log.info("Configured.")
 
     def _scan(self, scan_timeout=10, **_):
         def timed_out():

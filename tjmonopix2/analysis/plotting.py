@@ -162,9 +162,12 @@ class Plotting(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.out_file is not None and isinstance(self.out_file, PdfPages):
-            self.log.info('Closing output PDF file: {0}'.format(self.out_file._file.fh.name))
             self.out_file.close()
-            shutil.copyfile(self.filename, os.path.join(os.path.split(self.filename)[0], 'last_scan.pdf'))
+            if os.path.exists(self.filename):
+                self.log.info('Closed output PDF file: {0}'.format(self.filename))
+                shutil.copyfile(self.filename, os.path.join(os.path.split(self.filename)[0], 'last_scan.pdf'))
+            else:
+                self.log.warning("No PDF produced, skipping copy to last_scan.pdf")
 
     ''' User callable plotting functions '''
     def create_standard_plots(self):

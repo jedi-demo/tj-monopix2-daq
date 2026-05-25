@@ -18,8 +18,8 @@ from tjmonopix2.scans.shift_and_inject import shift_and_inject, get_scan_loop_ma
 from tjmonopix2.analysis import online as oa
 
 scan_configuration = {
-    'start_column': 0,
-    'stop_column': 64,
+    'start_column': 300,
+    'stop_column': 301,
     'start_row': 0,
     'stop_row': 512,
 

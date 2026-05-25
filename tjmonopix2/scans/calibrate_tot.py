@@ -15,8 +15,8 @@ from tjmonopix2.analysis import analysis, plotting
 from tjmonopix2.scans.scan_threshold import ThresholdScan
 
 scan_configuration = {
-    'start_column': 0,
-    'stop_column': 32,
+    'start_column': 300,
+    'stop_column': 301,
     'start_row': 0,
     'stop_row': 512,
 

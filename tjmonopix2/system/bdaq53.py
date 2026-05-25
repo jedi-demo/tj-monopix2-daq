@@ -195,9 +195,9 @@ class BDAQ53(Dut):
         if len(arg) == 0:
             j = -1
         else:
-            j = arg[0]
+            j = arg[0].item()
 
-        k = 1.0 / (math.log(r_ratio / R_RATIO[j]) / B_CONST[j] + 1 / TEMP[j])[0]
+        k = 1.0 / (math.log(r_ratio / R_RATIO[j]) / B_CONST[j] + 1 / TEMP[j])
         self.log.debug("Temperature of NTC %s: %.2f [°C]", NTC_type, k - 273.15)
 
         return round(k - 273.15, 3)

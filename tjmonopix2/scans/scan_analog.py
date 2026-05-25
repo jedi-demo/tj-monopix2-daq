@@ -12,10 +12,10 @@ from tjmonopix2.system.scan_base import ScanBase
 from tqdm import tqdm
 
 scan_configuration = {
-    'start_column': 0,
-    'stop_column': 224,
+    'start_column': 310,
+    'stop_column': 311,
     'start_row': 0,
-    'stop_row': 512,
+    'stop_row': 10,
 }
 
 

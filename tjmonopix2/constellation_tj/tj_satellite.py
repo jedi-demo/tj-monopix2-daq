@@ -1,5 +1,6 @@
 from constellation.core.configuration import Configuration
-from constellation.core.message.cscp1 import SatelliteState
+#from constellation.core.message.cscp1 import SatelliteState
+from constellation.core.protocol.cscp1 import SatelliteState
 from constellation.core.monitoring import schedule_metric
 from constellation.core.transmitter_satellite import TransmitterSatellite
 

@@ -5,7 +5,7 @@ import coloredlogs
 FORMAT = '%(asctime)s [%(name)-17s] - %(levelname)-7s %(message)s'
 
 
-def setup_main_logger(name='TJ-Monopix2', level=logging.INFO):
+def setup_main_logger(name='TJ-Monopix2', level=logging.DEBUG):
     _reset_all_loggers()
     _set_basil_logger_to(logging.WARNING)
 
