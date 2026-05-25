@@ -26,8 +26,8 @@ scan_configuration = {
     'n_injections': 100,
 
     # Target threshold
-    'VCAL_LOW': 1,
-    'VCAL_HIGH': 35,
+    'VCAL_LOW': 20,
+    'VCAL_HIGH': 40,
 
     # This setting does not have to be changed, it only allows (slightly) faster retuning
     # E.g.: gdac_value_bits = [3, 2, 1, 0] uses the 4th, 3rd, 2nd, and 1st GDAC value bit.

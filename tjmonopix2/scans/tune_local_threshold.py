@@ -26,8 +26,8 @@ scan_configuration = {
     'n_injections': 100,
 
     # Target threshold
-    'VCAL_LOW': 30,
-    'VCAL_HIGH': 55
+    'VCAL_LOW': 20,
+    'VCAL_HIGH': 40
 }
 
 

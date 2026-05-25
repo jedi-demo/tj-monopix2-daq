@@ -12,8 +12,8 @@ from tjmonopix2.system.scan_base import ScanBase
 from tqdm import tqdm
 
 scan_configuration = {
-    'start_column': 0,
-    'stop_column': 32,
+    'start_column': 315,
+    'stop_column': 316,
     'start_row': 0,
     'stop_row': 512,
 
@@ -46,18 +46,21 @@ class ThresholdScan(ScanBase):
         vcal_low_range = range(VCAL_LOW_start, VCAL_LOW_stop, VCAL_LOW_step)
 
         pbar = tqdm(total=get_scan_loop_mask_steps(self.chip) * len(vcal_low_range), unit='Mask steps')
-        for scan_param_id, vcal_low in enumerate(vcal_low_range):
-            self.chip.registers["VL"].write(vcal_low)
+        # for scan_param_id, vcal_low in enumerate(vcal_low_range):
+            # self.chip.registers["VL"].write(vcal_low)
 
-            self.store_scan_par_values(scan_param_id=scan_param_id, vcal_high=VCAL_HIGH, vcal_low=vcal_low)
-            with self.readout(scan_param_id=scan_param_id):
-                shift_and_inject(chip=self.chip, n_injections=n_injections, pbar=pbar, scan_param_id=scan_param_id)
+            # self.store_scan_par_values(scan_param_id=scan_param_id, vcal_high=VCAL_HIGH, vcal_low=vcal_low)
+        with self.readout(scan_param_id=scan.scan_param_id):
+            shift_and_inject(chip=self.chip, n_injections=n_injections, pbar=pbar, scan=self, scan_param="VL", values=vcal_low_range)
         pbar.close()
         self.log.success('Scan finished')
 
     def _analyze(self):
         with analysis.Analysis(raw_data_file=self.output_filename + '.h5', **self.configuration['bench']['analysis']) as a:
             a.analyze_data()
+            import tables as tb
+            with tb.open_file(a.analyzed_data_file, 'r') as f:
+                print(f.root._v_children.keys())
 
         if self.configuration['bench']['analysis']['create_pdf']:
             with plotting.Plotting(analyzed_data_file=a.analyzed_data_file) as p:

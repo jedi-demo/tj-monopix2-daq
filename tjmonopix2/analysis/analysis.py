@@ -392,48 +392,96 @@ class Analysis(object):
         with tb.open_file(self.analyzed_data_file, 'r+') as out_file:
             scan_id = self.run_config['scan_id']
 
-            out_file.create_carray(out_file.root,
-                                   name='HistOcc',
-                                   title='Occupancy Histogram',
-                                   obj=hist_occ,
-                                   filters=tb.Filters(complib='blosc',
-                                                      complevel=5,
-                                                      fletcher32=False))
-            out_file.create_carray(out_file.root,
-                                   name='HistTot',
-                                   title='ToT Histogram',
-                                   obj=hist_tot,
-                                   filters=tb.Filters(complib='blosc',
-                                                      complevel=5,
-                                                      fletcher32=False))
+            threshold_like = ['threshold_scan', 'calibrate_tot']
 
-            # if self.analyze_tdc:  # Only store if TDC analysis is used.
-            #     out_file.create_carray(out_file.root,
-            #                            name='HistTdcStatus',
-            #                            title='Tdc status Histogram',
-            #                            obj=hist_tdc_status,
-            #                            filters=tb.Filters(complib='blosc',
-            #                                               complevel=5,
-            #                                               fletcher32=False))
+            if scan_id in threshold_like:
+                scan_params = np.asarray(self.get_scan_param_values(scan_parameter='vcal_low'))
+
+                uniq_vals, first_idx = np.unique(scan_params, return_index=True)
+                order = np.argsort(first_idx)
+                unique_vcal_low = uniq_vals[order]
+
+                hist_occ_collapsed = np.zeros(
+                    (hist_occ.shape[0], hist_occ.shape[1], len(unique_vcal_low)),
+                    dtype=hist_occ.dtype
+                )
+                hist_tot_collapsed = np.zeros(
+                    (hist_tot.shape[0], hist_tot.shape[1], len(unique_vcal_low), hist_tot.shape[3]),
+                    dtype=hist_tot.dtype
+                )
+
+                for j, v in enumerate(unique_vcal_low):
+                    sel = (scan_params == v)
+                    hist_occ_collapsed[:, :, j] = hist_occ[:, :, sel].sum(axis=2)
+                    hist_tot_collapsed[:, :, j, :] = hist_tot[:, :, sel, :].sum(axis=2)
+
+                hist_occ = hist_occ_collapsed
+                hist_tot = hist_tot_collapsed
+
+            out_file.create_carray(
+                out_file.root,
+                name='HistOcc',
+                title='Occupancy Histogram',
+                obj=hist_occ,
+                filters=tb.Filters(complib='blosc', complevel=5, fletcher32=False)
+            )
+            out_file.create_carray(
+                out_file.root,
+                name='HistTot',
+                title='ToT Histogram',
+                obj=hist_tot,
+                filters=tb.Filters(complib='blosc', complevel=5, fletcher32=False)
+            )
 
             if scan_id in ['threshold_scan', 'calibrate_tot']:
-                n_injections = self.scan_config['n_injections']
+                scan_params = np.asarray(self.get_scan_param_values(scan_parameter='vcal_low'))
+                uniq_vals, first_idx = np.unique(scan_params, return_index=True)
+                order = np.argsort(first_idx)
+                unique_vcal_low = uniq_vals[order]
+
+                x = unique_vcal_low
                 hist_scurve = hist_occ.reshape((self.rows * self.columns, -1))
+                n_injections = self.scan_config['n_injections']
 
-                if scan_id in ['threshold_scan', 'calibrate_tot']:
-                    scan_params = [self.scan_config['VCAL_HIGH'] - v for v in range(self.scan_config['VCAL_LOW_start'],
-                                                                                    self.scan_config['VCAL_LOW_stop'], self.scan_config['VCAL_LOW_step'])]
-                    self.threshold_map, self.noise_map, self.chi2_map = au.fit_scurves_multithread(hist_scurve, scan_params, n_injections, optimize_fit_range=False)
-                elif scan_id == 'autorange_threshold_scan':
-                    scan_params = self.get_scan_param_values(scan_parameter='vcal_high') - self.get_scan_param_values(scan_parameter='vcal_med')
-                    self.threshold_map, self.noise_map, self.chi2_map = au.fit_scurves_multithread(hist_scurve, scan_params, n_injections, optimize_fit_range=False)
+                self.threshold_map, self.noise_map, self.chi2_map = au.fit_scurves_multithread(
+                    hist_scurve,
+                    x,
+                    n_injections,
+                    optimize_fit_range=False
+                )
 
-                out_file.create_carray(out_file.root, name='ThresholdMap', title='Threshold Map', obj=self.threshold_map,
-                                       filters=tb.Filters(complib='blosc', complevel=5, fletcher32=False))
-                out_file.create_carray(out_file.root, name='NoiseMap', title='Noise Map', obj=self.noise_map,
-                                       filters=tb.Filters(complib='blosc', complevel=5, fletcher32=False))
-                out_file.create_carray(out_file.root, name='Chi2Map', title='Chi2 / ndf Map', obj=self.chi2_map,
-                                       filters=tb.Filters(complib='blosc', complevel=5, fletcher32=False))
+            elif scan_id == 'autorange_threshold_scan':
+                hist_scurve = hist_occ.reshape((self.rows * self.columns, -1))
+                scan_params = self.get_scan_param_values(scan_parameter='vcal_high') - self.get_scan_param_values(scan_parameter='vcal_med')
+
+                self.threshold_map, self.noise_map, self.chi2_map = au.fit_scurves_multithread(
+                    hist_scurve,
+                    scan_params,
+                    self.scan_config['n_injections'],
+                    optimize_fit_range=False
+                )
+
+            out_file.create_carray(
+                out_file.root,
+                name='ThresholdMap',
+                title='Threshold Map',
+                obj=self.threshold_map,
+                filters=tb.Filters(complib='blosc', complevel=5, fletcher32=False)
+            )
+            out_file.create_carray(
+                out_file.root,
+                name='NoiseMap',
+                title='Noise Map',
+                obj=self.noise_map,
+                filters=tb.Filters(complib='blosc', complevel=5, fletcher32=False)
+            )
+            out_file.create_carray(
+                out_file.root,
+                name='Chi2Map',
+                title='Chi2 / ndf Map',
+                obj=self.chi2_map,
+                filters=tb.Filters(complib='blosc', complevel=5, fletcher32=False)
+            )
 
     def _create_additional_cluster_data(self, hist_cs_size, hist_cs_tot, hist_cs_shape):
         '''

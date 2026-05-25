@@ -348,6 +348,13 @@ class FifoReadout(object):
         t2 = datetime.datetime.fromtimestamp(t1)
         return mktime(t2.timetuple()) + 1e-6 * t2.microsecond
 
+    def drain_fifo(self, timeout=1.0):
+        t0 = time()
+        while time() - t0 < timeout:
+            if self.daq['FIFO']['FIFO_SIZE'] == 0:
+                break
+            sleep(self.readout_interval)
+    
     def reset_sram_fifo(self):
         fifo_size = self.daq['FIFO']['FIFO_SIZE']
         self.log.debug('Resetting FIFO: size = %i', fifo_size)

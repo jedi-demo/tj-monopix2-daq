@@ -210,6 +210,7 @@ class ScanBase(object):
         self._log_handlers_per_scan = []  # FIXME: all log handlers of all chips
         self.hardware_initialized = False
         self.initialized = False
+        self.scan_param_id = 0
 
         self.daq = None  # readout system, defined during scan init if not existing
 
@@ -783,7 +784,7 @@ class ScanBase(object):
                 row['attribute'] = attr
                 try:
                     row['value'] = val
-                except TypeError:  # value cannot be implicitly converted to string
+                except (TypeError, ValueError):  # value cannot be implicitly converted to string
                     row['value'] = str(val)
                 row.append()
             node.flush()
@@ -1063,7 +1064,7 @@ class ScanBase(object):
     @contextmanager
     def readout(self, scan_param_id=0, timeout=10.0, *args, **kwargs):
 
-        self.scan_param_id = scan_param_id
+        # self.scan_param_id = scan_param_id
 
         callback = kwargs.pop('callback', self.handle_data)
 
