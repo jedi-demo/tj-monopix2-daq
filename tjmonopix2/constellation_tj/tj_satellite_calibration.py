@@ -11,6 +11,9 @@ import yaml
 import os
 from typing import Any
 
+"""
+This is a calbiration satellite
+"""
 
 class TJMonopix2(TransmitterSatellite):
     def __init__(self, *args, **kwargs):
