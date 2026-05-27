@@ -10,29 +10,18 @@ from tjmonopix2.scans.shift_and_inject import (get_scan_loop_mask_steps,
                                                shift_and_inject)
 from tjmonopix2.system.scan_base import ScanBase
 from tqdm import tqdm
-from time import perf_counter
-from contextlib import contextmanager
-from collections import defaultdict
 
-@contextmanager
-def timed(label, acc):
-    t0 = perf_counter()
-    try:
-        yield
-    finally:
-        acc[label] += perf_counter() - t0
 scan_configuration = {
-    'start_column': 300,
-    'stop_column': 301,
+    'start_column': 0,
+    'stop_column': 32,
     'start_row': 0,
     'stop_row': 512,
 
     'n_injections': 100,
-    'VCAL_HIGH': 130,
-    'VCAL_LOW_start': 110,
+    'VCAL_HIGH': 80,
+    'VCAL_LOW_start': 80,
     'VCAL_LOW_stop': 40,
     'VCAL_LOW_step': -1
-    # delta VCAL: (VCAL_HIGH - VCAL_LOW_start) - (VCAL_HIGH - VCAL_LOW_stop)
 }
 
 
@@ -47,45 +36,26 @@ class ThresholdScan(ScanBase):
         self.chip.masks.update(force=True)
 
         self.chip.registers["SEL_PULSE_EXT_CONF"].write(0)
-        self.chip.registers["VCLIP"].write(60) # corresponds to max tot of 32
-
 
     def _scan(self, n_injections=100, VCAL_HIGH=80, VCAL_LOW_start=80, VCAL_LOW_stop=40, VCAL_LOW_step=-1, **_):
-        self.timing = defaultdict(float)
-        self.sandtiming = defaultdict(float)
+        """
+        Injects charges from VCAL_LOW_START to VCAL_LOW_STOP in steps of VCAL_LOW_STEP while keeping VCAL_HIGH constant.
+        """
 
-        with timed("write_VH", self.timing):
-            self.chip.registers["VH"].write(VCAL_HIGH)
-
+        self.chip.registers["VH"].write(VCAL_HIGH)
         vcal_low_range = range(VCAL_LOW_start, VCAL_LOW_stop, VCAL_LOW_step)
-        pbar = tqdm(total=get_scan_loop_mask_steps(self.chip) * len(vcal_low_range), unit="Mask steps")
 
+        pbar = tqdm(total=get_scan_loop_mask_steps(self.chip) * len(vcal_low_range), unit='Mask steps')
         for scan_param_id, vcal_low in enumerate(vcal_low_range):
-            with timed("write_VL", self.timing):
-                self.chip.registers["VL"].write(vcal_low)
+            self.chip.registers["VL"].write(vcal_low)
 
-            with timed("store_scan_par_values", self.timing):
-                self.store_scan_par_values(scan_param_id=scan_param_id, vcal_high=VCAL_HIGH, vcal_low=vcal_low)
-
-            with timed("readout_block", self.timing):
-                with self.readout(scan_param_id=scan_param_id):
-                    with timed("shift_and_inject", self.timing):
-                        sandtiming = shift_and_inject(
-                            chip=self.chip,
-                            n_injections=n_injections,
-                            pbar=pbar,
-                            scan_param_id=scan_param_id,
-                            timing=self.timing
-                        )
+            self.store_scan_par_values(scan_param_id=scan_param_id, vcal_high=VCAL_HIGH, vcal_low=vcal_low)
+            with self.readout(scan_param_id=scan_param_id):
+                shift_and_inject(chip=self.chip, n_injections=n_injections, pbar=pbar, scan_param_id=scan_param_id)
         pbar.close()
-        self.log.success("Scan finished")
+        self.log.success('Scan finished')
 
-        print(dict(self.timing))
-        for k, v in sorted(scan.timing.items(), key=lambda kv: kv[1], reverse=True):
-            print(f"{k:35s} {v:12.6f}")
-        return dict(self.timing)
     def _analyze(self):
-        return
         with analysis.Analysis(raw_data_file=self.output_filename + '.h5', **self.configuration['bench']['analysis']) as a:
             a.analyze_data()
 
