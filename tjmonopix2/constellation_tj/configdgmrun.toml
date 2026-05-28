@@ -1,0 +1,66 @@
+[TTiQLSatellite.TTiQL]
+type = "TTiQLSatellite"
+ip = "192.168.0.101"  
+enable_ch1 = false
+enable_ch2 = true
+ramp_ch2 = true
+ramp_step = 1.0
+ramp_delay = 1.0
+voltage1 = 0.0
+current_limit1 = 1.0
+voltage2 = 3.0
+current_limit2 = 1.0
+ovp1 = 40.0
+ocp1 = 5.5
+ovp2 = 40.0
+ocp2 = 5.5
+_conditions.require_stopping_after = ["TTiQLSatellite.TTiQL2"]
+_conditions.require_landing_after = ["TTiQLSatellite.TTiQL2"]
+
+[TTiQLSatellite.TTiQL2]
+type = "TTiQLSatellite"
+ip = "192.168.0.102"
+start_delay = 4.0
+enable_ch1 = true
+enable_ch2 = true
+launch_order = [2, 1]
+delay_between = 1.0
+ramp_ch1 = false
+ramp_ch2 = false
+voltage1 = 5.0
+current_limit1 = 1.0
+voltage2 = 1.8
+current_limit2 = 0.5
+ovp1 = 40.0
+ocp1 = 5.5
+ovp2 = 40.0
+ocp2 = 5.5
+_conditions.require_launching_after = ["TTiQLSatellite.TTiQL"]
+_conditions.require_starting_after = ["TTiQLSatellite.TTiQL"]
+
+[Influx.DB]
+url = "http://localhost:8086"
+bucket = "constellation"
+org = "Pixlab"
+#bucket = "TTi"
+token = "WJ2nUFCBc4Qz7hCh4Ztv_C2xa4WlXbZIN28n2EorHEj_weuUV0r9Y3cV9YJHEA288YdUigGZQn26lgTyuwmyFg=="
+# PJP0-gxun23D0yJ_rvqeNvpm2tJPGgeWCUojm2DNkYEPxS7V3XCBuqniIiWPWQtITKXr20ArIIgO3t094IhDGQ==
+
+# Satellite class is TJMonopix2 (python -m tjmonopix2.constellation_tj --name chip0 ...)
+[TJMonopix2.chip0]
+# Scan to run on Start: all | analog | tune_global | tune_local | threshold | source | ext_trigger | noise_occ
+scan_mode = "analog"
+chip_sn = 'W15R12'
+start_column = 290
+stop_column = 292
+start_row = 0
+stop_row = 512
+max_triggers = 10   # Number of maximum received triggers after stopping readout, if False no limit on received trigger
+send_data= "tcp://127.0.0.1:5500" # Socket address of online monitor
+_conditions.require_launching_after = ["TTiQLSatellite.TTiQL2"]
+_conditions.require_starting_after = ["TTiQLSatellite.TTiQL2"]
+
+[TJMonopix2.chip0._data]
+bor_timeout = 30
+data_timeout = 30
+eor_timeout = 30
