@@ -19,7 +19,7 @@ cfg = load_config(config_file_path)
 print("Configuration loaded")
 
 # Wait until all satellites are connected
-ctrl.await_satellites(["TTiQLSatellite.TTiQL", "TTiQLSatellite.TTiQL2", "Influx.DB", "TJMonopix2.chip0"])
+ctrl.await_satellites(["TTiQLSatellite.TTiQL", "TTiQLSatellite.TTiQL2", "Influx.DB", "TJMonopix2.chip0", "PyDevNullReceiver.PDNR"])
 #ctrl.await_satellites(["Influx.DB", "TJMonopix2.chip0"])
 print("Satellites connected")
 # Initialize and launch
@@ -35,6 +35,7 @@ print("Satellites launched")
 chip = ctrl.constellation.TJMonopix2.chip0
 time.sleep(20)
 # One scan per run: change scan_mode with reconfigure, then start with a run name
+#monopix_scans = ("analog", "analog", "tune_global", "tune_local", "threshold", "source", "noise_occ", "ext_trigger")
 monopix_scans = ("analog", "analog", "tune_global", "tune_local", "threshold", "source")
 for scan_mode in monopix_scans:
     chip.reconfigure({"scan_mode": scan_mode})
