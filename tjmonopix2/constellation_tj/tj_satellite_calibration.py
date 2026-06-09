@@ -248,3 +248,15 @@ class TJMonopix2(TransmitterSatellite):
             
         except Exception:
             return None
+            
+    @schedule_metric("ScanType", 1)
+    def scantypemetric(self):
+        if self.fsm.current_state_value == SatelliteState.ORBIT: 
+            return "Orbiting"
+        if self.fsm.current_state_value == SatelliteState.INIT: 
+            return "Initialized"
+        if not self.calibration_scan or not getattr(self.calibration_scan, 'initialized', False):
+            return 
+        if self.fsm.current_state_value == SatelliteState.RUN and self.calibration_scan: 
+            return str(self.scan_mode)
+        return
