@@ -33,7 +33,6 @@ SCAN_TYPES: dict[str, Type[ScanBase]] = {
     'noise_occ': NoiseOccScan,
 }
 
-
 class TJMonopix2(TransmitterSatellite):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -41,14 +40,21 @@ class TJMonopix2(TransmitterSatellite):
         self.scan_mode = 'all'
         self.thread_scan = None
         self._scan_error: BaseException | None = None
+        self.daq: BDAQ53 | None = None
 
     def do_initializing(self, config: Configuration) -> str:
         try:
             self.calibration_scan.close()
         except AttributeError:
             pass
+        self._close_daq()
         self._load_config(config)
         return 'initializing done'
+
+    def do_launching(self) -> str:
+        time.sleep(15)
+        self._init_daq()
+        return 'launching done'
 
     def do_reconfigure(self, partial_config: Configuration) -> str:
         if 'scan_mode' in partial_config:
@@ -73,7 +79,11 @@ class TJMonopix2(TransmitterSatellite):
         self.log.info(
             f'do_starting: run "{run_identifier}", scan_mode={self.scan_mode}'
         )
-        self._scan_error = None
+        
+        if self._scan_error is not None:
+            raise self._scan_error
+
+        self._close_daq()
 
         self.calibration_scan = SCAN_TYPES[self.scan_mode](scan_config=self.scan_configuration, bench_config=self.bench_conf)
 
@@ -89,7 +99,10 @@ class TJMonopix2(TransmitterSatellite):
 
     def do_run(self) -> str:
         assert self.thread_scan is not None
+        
         while self.thread_scan.is_alive() and not self._state_thread_evt.is_set():
+            if self._scan_error is not None:
+                raise self._scan_error
             self.thread_scan.join(timeout=0.5)
 
         if self.thread_scan.is_alive():
@@ -111,9 +124,11 @@ class TJMonopix2(TransmitterSatellite):
         self.thread_scan.join()
         self.calibration_scan = None
         self.thread_scan = None
+        self._init_daq()
         return 'stopping done'
 
     def do_landing(self) -> str:
+        self._close_daq()
         return 'landing done'
 
     def fail_gracefully(self) -> None:
@@ -122,10 +137,14 @@ class TJMonopix2(TransmitterSatellite):
             self.calibration_scan.stop_scan.set()
             self.log.info('fail_gracefully: stop_scan set')
         if self.thread_scan is not None:
-            self.thread_scan.join()
-            self.log.info('fail_gracefully: Scan thread stopped')
+            self.thread_scan.join(timeout=2.0)
+            if self.thread_scan.is_alive():
+                self.log.warning('fail_gracefully: Thread scan did not terminate cleanly!')
+            else:
+                self.log.info('fail_gracefully: Scan thread stopped')
         self.calibration_scan = None
         self.thread_scan = None
+        self._init_daq()
         self.log.info('fail_gracefully: Failed gracefully.')
 
     def _run_scan_work(self) -> None:
@@ -140,7 +159,6 @@ class TJMonopix2(TransmitterSatellite):
             self._scan_error = exc
             self.log.exception('Scan failed: %s', exc)
 
-
     def _load_config(self, config: Configuration) -> None:
         config.set_default(key='tot_calib_file', value=None)
         config.set_default(key='output_directory', value=None)
@@ -150,11 +168,9 @@ class TJMonopix2(TransmitterSatellite):
         config.set_default(key='scan_mode', value='all')
 
         config.set_default(key='send_data', value='tcp://127.0.0.1:5500')
-        #config.set_default(key='trigger_mode', value="eudet") # !!!!
         config.set_default(key='create_pdf', value=True)
 
         self.scan_mode = config.get('scan_mode')
-        
         
         self.scan_configuration = {
             'start_column': config.get_int(key='start_column'),
@@ -168,29 +184,14 @@ class TJMonopix2(TransmitterSatellite):
             'min_occupancy': 1,
             
             'n_injections': 100,
-
-            # This setting does not have to be changed, it only allows (slightly) faster retuning
-            # E.g.: gdac_value_bits = [3, 2, 1, 0] uses the 4th, 3rd, 2nd, and 1st GDAC value bit.
-            # GDAC is not an existing DAC, its value is mapped to ITHR currently
+            
             'gdac_value_bits': range(6, -1, -1),
-
-            # range in VCAL to scan during threshold scan:
-            # delta VCAL: (VCAL_HIGH - VCAL_LOW_start) - (VCAL_HIGH - VCAL_LOW_stop)
+            
             'VCAL_LOW': 24,
             'VCAL_HIGH': 130,
             'VCAL_LOW_start': 110,
             'VCAL_LOW_stop': 40,
             'VCAL_LOW_step': -1,
-            
-            #'tot_calib_file' : config.get_int(key='tot_calib_file'),
-            #'output_directory' : config.get_int(key='output_directory'),
-            #'chip_config_file' : config.get_int(key='chip_config_file'),
-            #'testbench_path' : config.get_int(key='testbench_path'),
-            #'send_data' : config.get_int(key='send_data'),
-            #'trigger_mode' : config.get_int(key='trigger_mode'),
-            #'create_pdf' : config.get_int(key='create_pdf'),
-            #'tot_calib_file' : config.get_int(key='tot_calib_file'),
-
         }
 
         with open(config.get_path(key='testbench_path', check_exists=True), 'r') as f:
@@ -201,15 +202,29 @@ class TJMonopix2(TransmitterSatellite):
             self.bench_conf['modules']['module_0']['chip_0']['send_data'] = config.get('send_data')
             self.bench_conf['analysis']['create_pdf'] = config.get('create_pdf')
 
+    def _init_daq(self) -> None:
+        if self.daq is None:
+            self.daq = BDAQ53(bench_config=self.bench_conf)
+            self.daq.init()
+
+    def _close_daq(self) -> None:
+        if self.daq:
+            self.daq.close()
+            self.daq = None
+
+    def _get_daq(self) -> BDAQ53 | None:
+        if self.calibration_scan:
+            daq = getattr(self.calibration_scan, 'daq', None)
+            if daq:
+                return daq
+        return self.daq
+
     @schedule_metric("temperature_fpga", 1)
     def temperature_fpga(self) -> Any:
-        if self.fsm.current_state_value != SatelliteState.RUN:
+        if self.fsm.current_state_value not in (SatelliteState.RUN, SatelliteState.ORBIT):
             return None
-            
-        if not self.calibration_scan or not getattr(self.calibration_scan, 'initialized', False):
-            return None
-            
-        daq = getattr(self.calibration_scan, 'daq', None)
+
+        daq = self._get_daq()
         if not daq:
             return None
 
@@ -218,34 +233,51 @@ class TJMonopix2(TransmitterSatellite):
             limit_fpga = 60
             if temp >= limit_fpga:
                 self.log.critical(f"FPGA at {temp}°C (Limit: {limit_fpga}°C)")
-                self._scan_error = RuntimeError(f"FPGA overheating: {temp}°C")
-                self.calibration_scan.stop_scan.set()
+                
+                error_msg = RuntimeError(f"FPGA overheating: {temp}°C")
+                self._scan_error = error_msg
+                
+                if self.calibration_scan and hasattr(self.calibration_scan, 'stop_scan'):
+                    self.calibration_scan.stop_scan.set()
+                
+                if hasattr(self, 'failure'):
+                    self.failure(error_msg)
+                elif hasattr(self.fsm, 'trigger_error'):
+                    self.fsm.trigger_error(error_msg)
+                    
             return temp
         except Exception:
             return None
 
     @schedule_metric("temperature_ntc", 1)
     def temperature_ntc(self) -> Any:
-        if self.fsm.current_state_value != SatelliteState.RUN:
+        if self.fsm.current_state_value not in (SatelliteState.RUN, SatelliteState.ORBIT):
             return None
-            
-        if not self.calibration_scan or not getattr(self.calibration_scan, 'initialized', False):
-            return None
-            
-        daq = getattr(self.calibration_scan, 'daq', None)
+
+        daq = self._get_daq()
         if not daq or not getattr(daq, 'enable_NTC', False):
             return None
 
-        port = 7 
+        port = 7
         limit_ntc = 45
         try:
             temp = float(daq.get_temperature_NTC(port))
             if temp >= limit_ntc:
                 self.log.critical(f"NTC at {temp}°C (Limit: {limit_ntc}°C)")
-                self._scan_error = RuntimeError(f"NTC overheating: {temp}°C")
-                self.calibration_scan.stop_scan.set()
+                
+                error_msg = RuntimeError(f"NTC overheating: {temp}°C")
+                self._scan_error = error_msg
+                
+                if self.calibration_scan and hasattr(self.calibration_scan, 'stop_scan'):
+                    self.calibration_scan.stop_scan.set()
+                
+                if hasattr(self, 'failure'):
+                    self.failure(error_msg)
+                elif hasattr(self.fsm, 'trigger_error'):
+                    self.fsm.trigger_error(error_msg)
+                    
             return temp
-            
+
         except Exception:
             return None
             
