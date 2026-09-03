@@ -30,6 +30,8 @@ from tjmonopix2.system import fifo_readout, logger
 from tjmonopix2.system.bdaq53 import BDAQ53
 from tjmonopix2.system.fifo_readout import FifoReadout
 from tjmonopix2.system.tjmonopix2 import TJMonoPix2
+from tjmonopix2.scan_config import ScanConfig
+from tjmonopix2.scan_config_h5 import write_scan_config_to_h5
 
 # Compression for data files
 FILTER_RAW_DATA = tb.Filters(complib='blosc', complevel=5, fletcher32=False)
@@ -774,95 +776,39 @@ class ScanBase(object):
         with self._logging_through_handlers():
             self.log.info('Found %d chip(s) of %d module(s) defined in the testbench', len(self.chips), self.get_n_modules())
 
+    def _get_scan_config(self) -> ScanConfig:
+        chip = self.chip
+
+        run_config = {
+            "scan_id": self.scan_id,
+            "run_name": self.run_name,
+            "software_version": utils.get_software_version(),
+            "module": self.module_settings["name"],
+            "chip_sn": self.chip.get_sn(),
+            "receiver": self.chip.receiver,
+        }
+
+        return ScanConfig(
+            scan_config=self.scan_config,
+            run_config=run_config,
+            chip_settings=self.chip_settings,
+            module_settings=self.module_settings,
+            registers={
+                name: reg.get()
+                for name, reg in chip.registers.items()
+            },
+            masks={
+                name: value
+                for name, value in chip.masks.items()
+            },
+            use_pixel=getattr(chip.masks, "disablemask", None),
+            bench_config=self.configuration["bench"],
+        )
+
     def _write_config_h5(self, h5_file, node):
         ''' Write complete configuration to the provided node of a h5 file '''
-
-        def write_dict_to_table(dictionary, node):
-            for attr, val in dictionary.items():
-                row = node.row
-                row['attribute'] = attr
-                try:
-                    row['value'] = val
-                except (TypeError, ValueError):  # value cannot be implicitly converted to string
-                    row['value'] = str(val)
-                row.append()
-            node.flush()
-
-        scan_node = h5_file.create_group(node, 'scan', 'Scan configuration')
-        # Run configuration
-        run_config_table = h5_file.create_table(scan_node, name='run_config', title='Run config', description=RunConfigTable)
-        row = run_config_table.row
-        row['attribute'] = 'scan_id'
-        row['value'] = self.scan_id
-        row.append()
-        row = run_config_table.row
-        row['attribute'] = 'run_name'
-        row['value'] = self.run_name
-        row.append()
-        row = run_config_table.row
-        row['attribute'] = 'software_version'
-        row['value'] = utils.get_software_version()
-        row.append()
-        row = run_config_table.row
-        row['attribute'] = 'module'
-        row['value'] = self.module_settings['name']
-        row.append()
-        row = run_config_table.row
-        row['attribute'] = 'chip_sn'
-        row['value'] = self.chip.get_sn()
-        row.append()
-        row = run_config_table.row
-        # row['attribute'] = 'chip_type'
-        # row['value'] = self.chip.get_type()
-        # row.append()
-        row = run_config_table.row
-        row['attribute'] = 'receiver'
-        row['value'] = self.chip.receiver
-        row.append()
-
-        # Scan configuration as provided during scan __init__
-        scan_cfg_table = h5_file.create_table(scan_node, name='scan_config', title='Scan configuration', description=RunConfigTable)
-        write_dict_to_table(self.scan_config, scan_cfg_table)
-
-        chip_node = h5_file.create_group(node, 'chip', 'Chip configuration')
-        # Chip register table
-        register_table = h5_file.create_table(chip_node, name='registers', title='Registers', description=RegisterTable)
-        for name, reg in self.chip.registers.items():
-            row = register_table.row
-            row['register'] = name
-            row['value'] = reg.get()
-            row.append()
-        register_table.flush()
-        # # Chip calibration table
-        # calibration_table = h5_file.create_table(chip_node, name='calibration', title='Calibration', description=RunConfigTable)
-        # write_dict_to_table(self.chip.calibration.return_all_values(), calibration_table)
-        # # Chip trim table
-        # trim_table = h5_file.create_table(chip_node, name='trim', title='Trim values', description=RunConfigTable)
-        # write_dict_to_table(self.chip.configuration['trim'], trim_table)
-
-        # Chip settings table
-        settings_table = h5_file.create_table(chip_node, name='settings', title='Chip settings from test bench', description=RunConfigTable)
-        write_dict_to_table(self.chip_settings, settings_table)
-
-        # Settings of the module where this chip belongs to
-        module_settings_table = h5_file.create_table(chip_node, name='module', title='Module settings from test bench', description=RunConfigTable)
-        write_dict_to_table(self.module_settings, module_settings_table)
-
-        # Chip masks
-        mask_node = h5_file.create_group(chip_node, 'masks', 'Pixel masks (configuration per pixel and virtual disable mask)')
-        for name, value in self.chip.masks.items():
-            h5_file.create_carray(mask_node, name=name, title=name.capitalize(), obj=value, filters=FILTER_RAW_DATA)
-
-        # Virtual enable mask
-        h5_file.create_carray(chip_node, name='use_pixel', title='Select pixels to be used in scans', obj=self.chip.masks.disable_mask, filters=FILTER_RAW_DATA)
-
-        bench_node = h5_file.create_group(node, 'bench', 'Test bench settings')
-
-        for setting, values in self.configuration['bench'].items():
-            if setting in ['modules']:  # settings parsed into chip container and stored seperately
-                continue
-            table = h5_file.create_table(bench_node, name=setting, title=setting.capitalize(), description=RunConfigTable)
-            write_dict_to_table(values, table)
+        cfg = self._get_scan_config()
+        write_scan_config_to_h5(h5file, node, cfg)
 
     def _set_readout_status(self):
         self.readout_status = self.fifo_readout.print_readout_status()
