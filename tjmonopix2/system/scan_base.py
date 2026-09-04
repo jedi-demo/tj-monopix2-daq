@@ -30,12 +30,15 @@ from tjmonopix2.system import fifo_readout, logger
 from tjmonopix2.system.bdaq53 import BDAQ53
 from tjmonopix2.system.fifo_readout import FifoReadout
 from tjmonopix2.system.tjmonopix2 import TJMonoPix2
-from tjmonopix2.scan_config import ScanConfig
-from tjmonopix2.scan_config_h5 import write_scan_config_to_h5
+from tjmonopix2.system.scan_config import (
+    FILTER_RAW_DATA,
+    FILTER_TABLES,
+    RunConfigTable,
+    RegisterTable,
+)
+from tjmonopix2.system.scan_config_h5 import write_scan_config_to_h5
+from tjmonopix2.system.scan_config import ScanConfig
 
-# Compression for data files
-FILTER_RAW_DATA = tb.Filters(complib='blosc', complevel=5, fletcher32=False)
-FILTER_TABLES = tb.Filters(complib='zlib', complevel=5, fletcher32=False)
 # Default locations
 PROJECT_FOLDER = os.path.join(os.path.dirname(__file__), '..')
 SYSTEM_FOLDER = os.path.join(PROJECT_FOLDER, 'system')
@@ -89,20 +92,11 @@ class MapTable(tb.IsDescription):
     scan_param_id = tb.UInt32Col(pos=3)
 
 
-class RunConfigTable(tb.IsDescription):
-    attribute = tb.StringCol(64)
-    value = tb.StringCol(512)
-
-
 # class ChipStatusTable(tb.IsDescription):
 #     attribute = tb.StringCol(64, pos=0)
 #     ADC = tb.UInt16Col(pos=1)
 #     value = tb.Float64Col(pos=2)
 
-
-class RegisterTable(tb.IsDescription):
-    register = tb.StringCol(64)
-    value = tb.StringCol(256)
 
 
 class ScanData:
@@ -801,14 +795,14 @@ class ScanBase(object):
                 name: value
                 for name, value in chip.masks.items()
             },
-            use_pixel=getattr(chip.masks, "disablemask", None),
+            use_pixel=getattr(chip.masks, "enable", None),
             bench_config=self.configuration["bench"],
         )
 
     def _write_config_h5(self, h5_file, node):
         ''' Write complete configuration to the provided node of a h5 file '''
         cfg = self._get_scan_config()
-        write_scan_config_to_h5(h5file, node, cfg)
+        write_scan_config_to_h5(h5_file, node, cfg)
 
     def _set_readout_status(self):
         self.readout_status = self.fifo_readout.print_readout_status()
@@ -945,9 +939,22 @@ class ScanBase(object):
         # Must be closed if already opened, otherwise access to file handle is only
         # possible using tb.file._open_files.close_all() (--> memory leak + file cannot be closed anymore)
         try:
+            self.h5_file.flush()
             self.h5_file.close()
         except tb.exceptions.ClosedFileError:  # if scan was called the file is already closed
             pass
+
+        #debug
+        if self.h5_file.isopen:
+            raise RuntimeError(
+                f"HDF5 file handle is still open: {self.output_filename}.h5"
+            )
+
+        # Check that the closed file can be reopened by HDF5.
+        with tb.open_file(self.output_filename + ".h5", mode="r"):
+            pass
+        # end of debug
+
         # Reopen interpreted file to append final config after analysis
         if not self.errors_occured:
             with tb.open_file(self.output_filename + '_interpreted.h5', 'a') as h5_file:
