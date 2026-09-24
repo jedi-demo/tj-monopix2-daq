@@ -141,10 +141,10 @@ class Register(dict):
             raise RuntimeError("Register size is too big, set with _write_register()")
 
         if verify:
-            if self.read() != value:
+            if self.read() != self['value']:
                 if write_ctr >= 10:
-                    raise RuntimeError('Could not verify value {0} in register {1}'.format(value, self['name']))
-                self.write(value=value, verify=True, write_ctr=write_ctr + 1)
+                    raise RuntimeError('Could not verify value {0} in register {1}'.format(self['value'], self['name']))
+                self.write(verify=True, write_ctr=write_ctr + 1)
 
     def get_write_command(self, value=None):
         if value is not None:
@@ -172,7 +172,7 @@ class Register(dict):
         val = self.chip._get_register_value(self['address'])
         bit_mask = eval('0b' + '1' * self['size']) << self['offset']
         val = (val & bit_mask) >> self['offset']
-        if val != self['value'] and self['mode'] == 1 and self['name'] != 'PIX_PORTAL':
+        if val != self['value'] and self['mode'] == 1 and self['name'] != 'PIXEL_PORTAL':
             self.log.warning(
                 (
                     'Register {0} did not have the expected value: Expected 0b{2:0'
@@ -256,7 +256,8 @@ class RegisterObject(OrderedDict):
         ''' Compare all chip registers to software and log result '''
         errors = 0
         for reg in self.values():
-            if reg['mode'] == 1 and reg['name'] not in ['PIX_PORTAL']:
+            # Pixel configuration registers are written directly by MaskObject.update(), not tracked in software
+            if reg['mode'] == 1 and reg['size'] <= 16 and reg['name'] not in ['PIXEL_PORTAL', 'ROW_SELECT', 'COLUMN_GROUP']:
                 val = reg.read()
                 if val != reg['value']:
                     errors += 1
