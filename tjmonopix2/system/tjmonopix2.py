@@ -869,7 +869,7 @@ class TJMonoPix2():
                     r_i = r_i + 1
                     idx = idx + 5
                 else:
-                    print("interpret_data: broken reg data", idx)
+                    print("interpret_data: broken reg data", idx, hex(rx_data[idx]))
                     idx = idx + 1
             elif rx_data[idx] == 0x1bc:  # sof
                 idx = idx + 1
@@ -1059,7 +1059,7 @@ class TJMonoPix2():
                         continue
                 self.write_command(self.write_sync(write=False) * 10)
             else:
-                self.log.warning('Timeout while waiting for register response.')
+                self.log.warning(f'Timeout while waiting for register response. Address: {hex(address)}')
         else:
             raise RuntimeError('Timeout while waiting for register response.')
 
