@@ -530,6 +530,33 @@ class MaskObject(dict):
 
         return data
 
+    def set_text_mask(self, text, font_path, font_size=90, value=True, tdac_value=4):
+        from PIL import Image, ImageDraw, ImageFont
+
+        w, h = self.dimensions
+        img = Image.new("1", (h, w), 0)   # note axis order if your arrays are [col, row]
+        draw = ImageDraw.Draw(img)
+        font = ImageFont.truetype(font_path, font_size)
+
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        x = (h - tw) // 2
+        y = (w - th) // 2
+
+        draw.text((x, y), text, fill=1 if value else 0, font=font)
+        mask = np.array(img, dtype=bool).T
+
+        self['enable'][:] = False
+        self['enable'][mask] = True
+        self['tdac'][:] = 0
+        self['tdac'][mask] = tdac_value
+
+        # self['enable'][:] = True
+        # self['enable'][mask] = False
+        # self['tdac'][:] = tdac_value
+        # self['tdac'][mask] = 0 
+
 
 class ShiftPatternBase(object):
     '''
