@@ -760,6 +760,7 @@ class ScanBase(object):
                     if scan_config_per_chip:
                         chip_specific_scan_config = scan_config_per_chip.get(mod_name, {}).get(name, {})  # scan config for this chip
                         chip_conf = utils.recursive_update(chip_conf, chip_specific_scan_config.get('chip', {}))
+                        scan_config = utils.recursive_update(scan_config, chip_specific_scan_config)
 
                     output_filename = os.path.join(output_dir, self.run_name)
 
