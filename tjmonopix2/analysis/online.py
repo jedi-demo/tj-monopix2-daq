@@ -38,7 +38,7 @@ def gray2bin(gray):
 
 
 @numba.njit(cache=True, fastmath=True)
-def histogram(raw_data, occ_hist, hit_data, is_sof, is_eof, tj_data_flag, rx_id=0):
+def histogram(raw_data, occ_hist, hit_data, is_sof, is_eof, tj_data_flag, rx_id=0, broken_frame_markers=False):
     ''' Raw data to 2D occupancy histogram '''
 
     for word in raw_data:
@@ -52,7 +52,9 @@ def histogram(raw_data, occ_hist, hit_data, is_sof, is_eof, tj_data_flag, rx_id=
         dat[2] = (word & 0x00001FF)
 
         for d in dat:
-            if d == 0x1bc:
+            if broken_frame_markers and d & 0x100:  # Every K character ends a frame, drop incomplete hits
+                tj_data_flag = 0
+            elif d == 0x1bc:
                 is_sof = 1
                 tj_data_flag = 0
             elif d == 0x17c:
@@ -198,12 +200,13 @@ class OccupancyHistogramming(OnlineHistogrammingBase):
         No event building.
     '''
 
-    def __init__(self, rx_id=0):
+    def __init__(self, rx_id=0, broken_frame_markers=False):
         super().__init__(shape=(512, 512), rx_id=rx_id)
-        self.analysis_function_kwargs = {'hit_data': np.zeros(1, dtype=au.hit_dtype), 'is_sof': -1, 'is_eof': -1, 'tj_data_flag': 0, 'rx_id': rx_id}
+        self.analysis_function_kwargs = {'hit_data': np.zeros(1, dtype=au.hit_dtype), 'is_sof': -1, 'is_eof': -1, 'tj_data_flag': 0, 'rx_id': rx_id,
+                                         'broken_frame_markers': broken_frame_markers}
 
-        def analysis_function(self, raw_data, hist, hit_data, is_sof, is_eof, tj_data_flag, rx_id):
-            return histogram(raw_data, hist, hit_data, is_sof, is_eof, tj_data_flag, rx_id)
+        def analysis_function(self, raw_data, hist, hit_data, is_sof, is_eof, tj_data_flag, rx_id, broken_frame_markers):
+            return histogram(raw_data, hist, hit_data, is_sof, is_eof, tj_data_flag, rx_id, broken_frame_markers)
         setattr(OccupancyHistogramming, 'analysis_function', analysis_function)
 
         self.init()

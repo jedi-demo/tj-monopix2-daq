@@ -24,13 +24,14 @@ class TJMonopix2(Transceiver):
         self.chunk_size = self.config.get('chunk_size', 1000000)
         self.analyze_tdc = self.config.get('analyze_tdc', False)
         self.rx_id = self.config.get('rx_id', 'rx0')
+        self.broken_frame_markers = self.config.get('broken_frame_markers', False)
         # Mask pixels that have a higher occupancy than 3 * the median of all firering pixels
         self.noisy_threshold = self.config.get('noisy_threshold', 3)
 
         self.mask_noisy_pixel = False
 
         # Init result hists
-        self.interpreter = RawDataInterpreter(rx_id=self.rx_id)
+        self.interpreter = RawDataInterpreter(rx_id=self.rx_id, broken_frame_markers=self.broken_frame_markers)
         self.reset_hists()
 
         # Number of readouts to integrate

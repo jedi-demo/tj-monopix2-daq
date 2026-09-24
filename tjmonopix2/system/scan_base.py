@@ -526,7 +526,8 @@ class ScanBase(object):
                 if self.chip:  # create chip object only once
                     continue
                 else:
-                    self.chip = TJMonoPix2(self.daq, chip_sn=self.chip_settings['chip_sn'], chip_id=self.chip_settings['chip_id'], receiver=self.chip_settings['receiver'], config=self.chip_conf)
+                    self.chip = TJMonoPix2(self.daq, chip_sn=self.chip_settings['chip_sn'], chip_id=self.chip_settings['chip_id'], receiver=self.chip_settings['receiver'], config=self.chip_conf,
+                                           broken_frame_markers=self.chip_settings.get('broken_frame_markers', False))
 
     def _init_files(self):
         for _ in self.iterate_chips():

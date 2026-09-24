@@ -17,6 +17,7 @@ class_spec = [
     ('n_scan_params', numba.int32),
     ('trigger_data_format', numba.uint8),
     ('rx_id', numba.uint8),
+    ('broken_frame_markers', numba.boolean),
 
     ('hist_occ', numba.uint32[:, :, :]),
     ('hist_tot', numba.uint16[:, :, :, :]),
@@ -68,7 +69,7 @@ def get_tdc_value(word):
 
 @numba.experimental.jitclass(class_spec)
 class RawDataInterpreter(object):
-    def __init__(self, n_scan_params=1, trigger_data_format=1, rx_id=0):
+    def __init__(self, n_scan_params=1, trigger_data_format=1, rx_id=0, broken_frame_markers=False):
         self.sof = False
         self.eof = False
         self.error_cnt = 0
@@ -78,6 +79,8 @@ class RawDataInterpreter(object):
         self.n_scan_params = n_scan_params
         self.trigger_data_format = trigger_data_format
         self.rx_id = rx_id
+        # Chip sends idle (K28.1) instead of SOF/EOF, use idles as frame boundaries
+        self.broken_frame_markers = broken_frame_markers
 
         self.n_triggers = 0
         self.n_tdc = 0
@@ -102,7 +105,14 @@ class RawDataInterpreter(object):
                 dat[2] = (raw_data_word & 0x00001FF)
 
                 for d in dat:
-                    if d == 0x1bc:  # SOF hit data
+                    if self.broken_frame_markers and d & 0x100:  # Every K character ends a frame
+                        if self.tj_data_flag != 0:
+                            self.error_cnt += 1  # Incomplete hit
+                            self.tj_data_flag = 0
+                        if self.sof:  # Frame contained data
+                            self.sof = False
+                            self.token_id += 1
+                    elif d == 0x1bc:  # SOF hit data
                         if self.sof:
                             self.error_cnt += 1  # SOF before EOF
                         self.sof = True
@@ -117,7 +127,10 @@ class RawDataInterpreter(object):
                         pass
                     else:
                         if not self.sof:
-                            self.error_cnt += 1
+                            if self.broken_frame_markers:
+                                self.sof = True  # First data word starts the frame
+                            else:
+                                self.error_cnt += 1
 
                         if not self.tj_data_flag:  # Start block of hit words
                             self.tj_data_flag = 1  # Starting with column data
