@@ -660,7 +660,7 @@ class TJMonoPix2():
 
     flavor_cols = FLAVOR_COLS
 
-    def __init__(self, daq, chip_sn='W00R00', chip_id=0, config=None, receiver="rx0"):
+    def __init__(self, daq, chip_sn='W00R00', chip_id=0, config=None, receiver="rx0", broken_frame_markers=False):
         self.log = logger.setup_derived_logger('TJ-Monopix2 - ' + chip_sn)
         self.daq = daq
         self.proj_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -680,6 +680,8 @@ class TJMonoPix2():
         self.chip_id = chip_id
         self.chip_sn = chip_sn
         self.receiver = receiver
+        # Chip sends idle (K28.1) instead of frame markers (K28.5, K28.3, K28.7, K28.2), use idles as frame boundaries
+        self.broken_frame_markers = broken_frame_markers
 
         self.registers = RegisterObject(self, 'registers.yaml')
 
@@ -854,6 +856,8 @@ class TJMonoPix2():
         r1 = (r & 0x003FE00) >> 9
         r2 = (r & 0x00001FF)
         rx_data = np.reshape(np.vstack((r0, r1, r2)), -1, order="F")
+        if self.broken_frame_markers:
+            return self._interpret_data_broken_frame_markers(rx_data, hit_dtype, reg_dtype)
         hit = np.empty(len(rx_data) // 4 + 10, dtype=hit_dtype)
         reg = np.empty(len(rx_data) // 5 + 10, dtype=reg_dtype)
         h_i = 0
@@ -897,6 +901,44 @@ class TJMonoPix2():
                 hit[h_i]['col'] = ((rx_data[idx] & 0xFF) << 1) + ((rx_data[idx + 2] & 0x2) >> 1)
                 idx = idx + 4
                 h_i = h_i + 1
+        hit = hit[:h_i]
+        reg = reg[:r_i]
+        hit['le'] = gray2bin(np.copy(hit['le']))
+        hit['te'] = gray2bin(np.copy(hit['te']))
+        return hit, reg
+
+    def _interpret_data_broken_frame_markers(self, rx_data, hit_dtype, reg_dtype):
+        '''
+            Interpret data of a chip that sends idle (K28.1) instead of all other K characters.
+            Every K character ends a frame: frames with 3 data words are register data,
+            frames with a multiple of 4 data words are hit data. Other frames are dropped.
+        '''
+        hit = np.empty(len(rx_data) // 4 + 10, dtype=hit_dtype)
+        reg = np.empty(len(rx_data) // 3 + 10, dtype=reg_dtype)
+        h_i = 0
+        r_i = 0
+        token_id = 0
+        frame = []
+        for d in np.append(rx_data, 0x13c):  # Trailing idle to end the last frame
+            if not d & 0x100:  # Data word
+                frame.append(d & 0xFF)
+                continue
+            if len(frame) == 3:  # reg data
+                reg[r_i]['address'] = frame[0]
+                reg[r_i]['value'] = (frame[1] << 8) + frame[2]
+                r_i = r_i + 1
+            elif len(frame) > 0 and len(frame) % 4 == 0:  # hit data
+                for i in range(0, len(frame), 4):
+                    hit[h_i]['token_id'] = token_id
+                    hit[h_i]['le'] = (frame[i + 1] & 0xFE) >> 1
+                    hit[h_i]['te'] = (frame[i + 1] & 0x01) << 6 | ((frame[i + 2] & 0xFC) >> 2)
+                    hit[h_i]['row'] = ((frame[i + 2] & 0x1) << 8) | frame[i + 3]
+                    hit[h_i]['col'] = (frame[i] << 1) + ((frame[i + 2] & 0x2) >> 1)
+                    h_i = h_i + 1
+                token_id = token_id + 1
+            elif len(frame) > 0:
+                self.log.debug('interpret_data: dropped frame with {0} data words'.format(len(frame)))
+            frame = []
         hit = hit[:h_i]
         reg = reg[:r_i]
         hit['le'] = gray2bin(np.copy(hit['le']))
