@@ -250,6 +250,9 @@ class ScanBase(object):
                     self._configure_masks()
                     # Scan dependent configuration step before actual scan can be started (set enable masks etc.)
                     ret_values[i] = self._configure(**self.scan_config)
+                    # Read back all register writes done during configuration
+                    if self.configuration['bench']['general'].get('check_registers', False):
+                        self._check_registers()
                     # self.periphery.get_module_power(module=self.module_settings['name'], log=True)
                     self._set_receiver_enabled(receiver=self.chip.receiver, enabled=False)
 
@@ -585,10 +588,6 @@ class ScanBase(object):
                             p_idx = ast.literal_eval(p)
                             self.chip_conf['use_pixel'][p_idx] = 0
                     self.chip.masks.disable_mask = deepcopy(self.chip_conf['use_pixel'])
-
-                    # # Check if chip is configured properly
-                    # if self.daq.board_version != 'SIMULATION':
-                    #     self.chip.registers.check_all()
 
                     self._set_receiver_enabled(receiver=self.chip.receiver, enabled=False)
 
@@ -980,6 +979,18 @@ class ScanBase(object):
         #         self.chip.masks['hitbus'] = self.chip.masks['enable']
 
         self.chip.masks.update(force=True)  # write all masks to chip
+
+    def _check_registers(self):
+        '''
+            Read back global registers and compare to software state
+        '''
+
+        if self.daq.board_version == 'SIMULATION':
+            return
+
+        errors = self.chip.registers.check_all()
+        if errors:
+            raise RuntimeError('Global register readback failed for {0} register(s), see warnings above'.format(errors))
 
     def _configure_fifo_readout(self):
         self.fifo_readout = FifoReadout(self.daq)
