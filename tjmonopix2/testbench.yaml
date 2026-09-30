@@ -4,31 +4,33 @@ general: # General configuration
 
 # Connected Modules
 modules:
-  module_0: # Arbitrary name of module, defines folder name with chip sub folders
+  module_5: # Arbitrary name of module, defines folder name with chip sub folders
     identifier: "unknown" # Module/wafer/PCB identifier, has to be given (e.g. SCC number)
     chip_0: # Arbitrary name of chip, defines folder name with chip data
-      chip_sn: "W05R24"
-      chip_id: 15 # 0x1F = 31 for the broadcast - check it -- Kirill
+      chip_sn: "W15R12"
+      chip_id: 0 # 0x1F = 31 for the broadcast - check it -- Kirill
       receiver: "rx1" # rx0 - DP_ML;  rx0-3 - J1A-D
-      chip_config_file: # If defined: use config from in file (either .cfg.yaml or .h5). If not defined use chip config of latest scan and std. config if no previous scan exists
+      chip_config_file: #'/home/pixlab/dgalacho/tj-monopix2-daq/tjmonopix2/default_goodchip.cfg.yaml' 
+# If defined: use config from in file (either .cfg.yaml or .h5). If not defined use chip config of latest scan and std. config if no previous scan exists
       record_chip_status: True # Add chip statuses to the output files after the scan (link errors and powering infos)
       use_good_pixels_diff: False
       send_data: "tcp://127.0.0.1:5500" # Socket address of online monitor
      
-  module_1:
-    identifier: "otherone"
+  #module_1:
+   # identifier: "otherone"
     chip_1: # Arbitrary name of chip, defines folder name with chip data
-      chip_sn: "W15R12"
-      chip_id: 15
+      chip_sn: "W05R24"
+      chip_id: 2
       receiver: "rx3"
-      chip_config_file: # If defined: use config from in file (either .cfg.yaml or .h5). If not defined use chip config of latest scan and std. config if no previous scan exists
+      chip_config_file: #'/home/pixlab/dgalacho/tj-monopix2-daq/tjmonopix2/default_badchip.cfg.yaml' 
+# If defined: use config from in file (either .cfg.yaml or .h5). If not defined use chip config of latest scan and std. config if no previous scan exists
       record_chip_status: True # Add chip statuses to the output files after the scan (link errors and powering infos)
       use_good_pixels_diff: False
-      send_data: "tcp://127.0.0.1:5500" # Socket address of online monitor
+      # send_data: "tcp://127.0.0.1:5500" # Socket address of online monitor
 
     # chip_0: # Arbitrary name of chip, defines folder name with chip data
     #   chip_sn: "W11R07"
-    #   chip_id: 2
+    #   chip_id: 31
     #   receiver: "rx2"
     #   chip_config_file: # If defined: use config from in file (either .cfg.yaml or .h5). If not defined use chip config of latest scan and std. config if no previous scan exists
     #   record_chip_status: True # Add chip statuses to the output files after the scan (link errors and powering infos)
@@ -36,7 +38,7 @@ modules:
     #   send_data: "tcp://127.0.0.1:5500" # Socket address of online monitor
     # chip_0: # Arbitrary name of chip, defines folder name with chip data
     #   chip_sn: "W11R07"
-    #   chip_id: 3
+    #   chip_id: 31
     #   receiver: "rx3"
     #   chip_config_file: # If defined: use config from in file (either .cfg.yaml or .h5). If not defined use chip config of latest scan and std. config if no previous scan exists
     #   record_chip_status: True # Add chip statuses to the output files after the scan (link errors and powering infos)
@@ -79,7 +81,7 @@ calibration: # Setup-specific calibration constants
 analysis:
   skip: False # Omit analysis in scans
   create_pdf: True # Create analysis summary pdf
-  # module_plotting: True  # Create combined plots for chip in a module
+  module_plotting: False  # Create combined plots for chip in a module
   store_hits: True # store hit table
   cluster_hits: False # store cluster data
   path: "/home/pixlab/jiddon/tj-monopix2-daq/tjmonopix2/scans/output_data/module_0/chip_0/20260430_123057_threshold_scan"
