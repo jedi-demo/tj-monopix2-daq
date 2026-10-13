@@ -16,7 +16,7 @@ import yaml, json, argparse
 
 class AnalogScan(ScanBase):
     scan_id = 'analog_scan'
-    is_parallel_scan = True 
+    is_parallel_scan = True  # Inject all chips at once using the broadcast chip ID
 
     def _configure(self, start_column=0, stop_column=512, start_row=0, stop_row=512, ruta_mask="output_data/module_0/chip_0/masked_pixels.yaml", col_bad=[], **_):
         self.chip.masks['enable'][start_column:stop_column, start_row:stop_row] = True
@@ -98,10 +98,11 @@ class AnalogScan(ScanBase):
         self.chip.registers["SEL_PULSE_EXT_CONF"].write(0)
 
     def _scan(self, n_injections=100, **_):
-        pbar = tqdm(total=get_scan_loop_mask_steps(self.chip), unit='Mask steps')
-        self.chip.chip_id = 0x10
-        with self.readout(scan_param_id=0):
-            shift_and_inject(chip=self.chip, n_injections=n_injections, pbar=pbar, scan_param_id=0)
+        masks = ['injection'] if self.is_parallel_scan else ['injection', 'enable']  # Parallel: enable mask stays as set per chip in _configure()
+        with self.broadcast() as chip:
+            pbar = tqdm(total=get_scan_loop_mask_steps(chip), unit='Mask steps')
+            with self.readout(scan_param_id=0):
+                shift_and_inject(chip=chip, n_injections=n_injections, pbar=pbar, scan_param_id=0, masks=masks)
         pbar.close()
 
         self.log.success('Scan finished')
