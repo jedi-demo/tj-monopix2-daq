@@ -13,10 +13,10 @@ from tjmonopix2.analysis import analysis, plotting
 from tjmonopix2.system.scan_base import ScanBase
 
 scan_configuration = {
-    'start_column': 310,
-    'stop_column': 311,
+    'start_column': 0,
+    'stop_column': 223,
     'start_row': 0,
-    'stop_row': 10,
+    'stop_row': 512,
 
     'scan_timeout': 30,    # Timeout for scan after which the scan will be stopped, in seconds; if False no limit on scan time
 

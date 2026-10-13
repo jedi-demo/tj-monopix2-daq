@@ -277,7 +277,7 @@ def plot_from_file(path_h5, output_dir, clim):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-d', default='./output_data/module_0/chip_0', help='directory to find h5 files')
+parser.add_argument('-d', default='./output_data/module_1/chip_1', help='directory to find h5 files')
 parser.add_argument(
         "input_file", nargs="*",
         help="The _threshold_scan_interpreted.h5 file(s)."
@@ -318,7 +318,7 @@ if args.collect_plots:
 if args.input_file:  # If anything was given on the command line
     filepath_in = args.input_file[0]
 else:
-    folder_path = 'output_data/module_0/chip_0/'
+    folder_path = 'output_data/module_1/chip_1/'
     filepath_in = find_latest_file(folder_path, '_scan_interpreted.h5')
 
 if args.p or args.P:

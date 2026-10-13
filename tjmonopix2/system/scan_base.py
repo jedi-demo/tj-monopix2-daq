@@ -253,6 +253,7 @@ class ScanBase(object):
                     ret_values[i] = self._configure(**self.scan_config)
                     # self.periphery.get_module_power(module=self.module_settings['name'], log=True)
                     self._set_receiver_enabled(receiver=self.chip.receiver, enabled=False)
+                    time.sleep(5) # JPI 
 
             # Create general FIFO readout (for all chips/modules)
             self._configure_fifo_readout()
