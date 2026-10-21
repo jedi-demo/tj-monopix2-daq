@@ -17,6 +17,8 @@ from tjmonopix2.system.scan_base import ScanBase
 from tjmonopix2.scans.shift_and_inject import shift_and_inject, get_scan_loop_mask_steps
 from tjmonopix2.analysis import online as oa
 
+import yaml, json, argparse
+
 scan_configuration = {
     'start_column': 300,
     'stop_column': 301,
@@ -27,13 +29,13 @@ scan_configuration = {
 
     # Target threshold
     'VCAL_LOW': 30,
-    'VCAL_HIGH': 55
+    'VCAL_HIGH': 60
 }
 
 
 class TDACTuning(ScanBase):
     scan_id = 'local_threshold_tuning'
-
+    is_parallel_scan = False
     def _configure(self, start_column=0, stop_column=512, start_row=0, stop_row=512, VCAL_LOW=30, VCAL_HIGH=60, **_):
         '''
         Parameters
@@ -138,6 +140,8 @@ class TDACTuning(ScanBase):
         mean_tdac = np.mean(tdac_mask[enable_mask])
         self.log.success('Mean TDAC is {0:1.2f}.'.format(mean_tdac))
         self.chip.masks['tdac'][start_column:stop_column, start_row:stop_row] = self.data.tdac_map[start_column:stop_column, start_row:stop_row]
+        submatrix_data = self.data.tdac_map[start_column:stop_column, start_row:stop_row]
+        np.save(f"TDAC_{self.chip.chip_sn}_20vcal.npy", submatrix_data)
 
     def analyze_data_online(self, data_tuple, receiver):
         raw_data = data_tuple[0]
@@ -153,5 +157,10 @@ class TDACTuning(ScanBase):
 
 
 if __name__ == '__main__':
+    config_path = "scan_config.yaml"
+    with open(config_path) as f:
+        config_data = yaml.full_load(f)
+    scan_configuration = config_data.get("scan_configuration")
+    scan_configuration_per_chip = config_data.get("scan_configuration_per_chip")
     with TDACTuning(scan_config=scan_configuration) as tuning:
         tuning.start()

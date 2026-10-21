@@ -15,30 +15,13 @@ from tqdm import tqdm
 from tjmonopix2.system.scan_base import ScanBase
 from tjmonopix2.scans.shift_and_inject import shift_and_inject
 from tjmonopix2.analysis import online as oa
-
-
-scan_configuration = {
-    'start_column': 300,
-    'stop_column': 301,
-    'start_row': 0,
-    'stop_row': 512,
-
-    'n_injections': 100,
-
-    # Target threshold
-    'VCAL_LOW': 1,
-    'VCAL_HIGH': 35,
-
-    # This setting does not have to be changed, it only allows (slightly) faster retuning
-    # E.g.: gdac_value_bits = [3, 2, 1, 0] uses the 4th, 3rd, 2nd, and 1st GDAC value bit.
-    # GDAC is not an existing DAC, its value is mapped to ITHR currently
-    'gdac_value_bits': range(6, -1, -1)
-}
+import yaml, json, argparse
 
 
 class GDACTuning(ScanBase):
     scan_id = 'global_threshold_tuning'
-
+    is_parallel_scan = False
+        
     def _configure(self, start_column=0, stop_column=512, start_row=0, stop_row=512, VCAL_LOW=30, VCAL_HIGH=60, **_):
         '''
         Parameters
@@ -133,7 +116,7 @@ class GDACTuning(ScanBase):
             self.log.info('Mean Occ of {} at ICASN = {}'.format(mean_occ, gdac_new))
 
             # Update GDACS from measured mean occupancy
-            if not np.isnan(mean_occ) and mean_occ > n_injections / 2.:  # threshold too low
+            if not np.isnan(mean_occ) and mean_occ > n_injections / 2.:  # threshold low #change < with > to reverse
                 gdac_new = np.bitwise_and(gdac_new, ~(1 << gdac_bit))  # decrease threshold
 
         else:  # Loop finished but last bit = 0 still has to be checked
@@ -179,5 +162,10 @@ class GDACTuning(ScanBase):
 
 
 if __name__ == '__main__':
+    config_path = "scan_config.yaml"
+    with open(config_path) as f:
+        config_data = yaml.full_load(f)
+    scan_configuration = config_data.get("scan_configuration")
+    scan_configuration_per_chip = config_data.get("scan_configuration_per_chip")
     with GDACTuning(scan_config=scan_configuration) as tuning:
         tuning.start()
