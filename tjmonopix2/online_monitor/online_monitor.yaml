@@ -1,16 +1,26 @@
 converter :
-    DUT:
+    W02R17:
         kind : tjmonopix2_inter
         frontend : tcp://127.0.0.1:5500
         backend : tcp://127.0.0.1:5600
+        analyze_tdc : True  #  Enable interpretation of TDC words
+        noisy_threshold : 3  # Pixels per readout above noisy_threshold * median occupancy
+        rx_id : 1
+    W05R24:
+        kind : tjmonopix2_inter
+        frontend : tcp://127.0.0.1:5501
+        backend : tcp://127.0.0.1:5601
         analyze_tdc : False  #  Enable interpretation of TDC words
         noisy_threshold : 3  # Pixels per readout above noisy_threshold * median occupancy
-        #rx_id : rx1
-
+        rx_id : 3
+        
 receiver :
-    DUT :
+    W02R17 :
         kind : tjmonopix2_recv
         frontend : tcp://127.0.0.1:5600
+    W05R24 :
+        kind : tjmonopix2_recv
+        frontend : tcp://127.0.0.1:5601
 
 # producer_sim:
 #     TJ2 :

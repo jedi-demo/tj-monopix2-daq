@@ -85,7 +85,8 @@ class TJMonopix2(TransmitterSatellite):
 
         self._close_daq()
 
-        self.calibration_scan = SCAN_TYPES[self.scan_mode](scan_config=self.scan_configuration, bench_config=self.bench_conf)
+        self.log.info(f"scan_config_per_chip: {self.scan_configuration_per_chip}")
+        self.calibration_scan = SCAN_TYPES[self.scan_mode](scan_config=self.scan_configuration, scan_config_per_chip=self.scan_configuration_per_chip)
 
         if hasattr(self.calibration_scan, 'stop_scan'):
             self.calibration_scan.stop_scan.clear()
@@ -171,28 +172,11 @@ class TJMonopix2(TransmitterSatellite):
         config.set_default(key='create_pdf', value=True)
 
         self.scan_mode = config.get('scan_mode')
-        
-        self.scan_configuration = {
-            'start_column': config.get_int(key='start_column'),
-            'stop_column': config.get_int(key='stop_column'),
-            'start_row': config.get_int(key='start_row'),
-            'stop_row': config.get_int(key='stop_row'),
-            'max_triggers': config.get_int(key='max_triggers'),
-            
-            'scan_timeout': config.get_int(key='scan_timeout'),
-            
-            'min_occupancy': 1,
-            
-            'n_injections': 100,
-            
-            'gdac_value_bits': range(6, -1, -1),
-            
-            'VCAL_LOW': 24,
-            'VCAL_HIGH': 130,
-            'VCAL_LOW_start': 110,
-            'VCAL_LOW_stop': 40,
-            'VCAL_LOW_step': -1,
-        }
+        config_path = "/home/pixlab/dgalacho/tj-monopix2-daq/tjmonopix2/scans/scan_config.yaml"
+        with open(config_path) as f:
+            config_data = yaml.full_load(f)
+        self.scan_configuration = config_data.get("scan_configuration")
+        self.scan_configuration_per_chip = config_data.get("scan_configuration_per_chip")
 
         with open(config.get_path(key='testbench_path', check_exists=True), 'r') as f:
             self.bench_conf = yaml.full_load(f)
@@ -251,6 +235,7 @@ class TJMonopix2(TransmitterSatellite):
 
     @schedule_metric("temperature_ntc", 1)
     def temperature_ntc(self) -> Any:
+        return None #Only works with DP connection
         if self.fsm.current_state_value not in (SatelliteState.RUN, SatelliteState.ORBIT):
             return None
 
