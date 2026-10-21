@@ -1,14 +1,16 @@
 general: # General configuration
   output_directory: #'/media/raid/data/tjmonopix2/2021-10-25_elsa/tuning' # Top-level output data directory, default is the current folder where the script is started
   log_level: "WARNING"
+  #timeout: False
+  abort_on_rx_error: False
 
 # Connected Modules
 modules:
-  module_5: # Arbitrary name of module, defines folder name with chip sub folders
+  module_8: # Arbitrary name of module, defines folder name with chip sub folders
     identifier: "unknown" # Module/wafer/PCB identifier, has to be given (e.g. SCC number)
     chip_0: # Arbitrary name of chip, defines folder name with chip data
-      chip_sn: "W15R12"
-      chip_id: 31 # 0x1F = 31 for the broadcast - check it -- Kirill
+      chip_sn: "W02R17"
+      chip_id: 0 # 0x1F = 31 for the broadcast - check it -- Kirill
       receiver: "rx1" # rx0 - DP_ML;  rx0-3 - J1A-D
       chip_config_file: #'/home/pixlab/dgalacho/tj-monopix2-daq/tjmonopix2/default_goodchip.cfg.yaml' 
 # If defined: use config from in file (either .cfg.yaml or .h5). If not defined use chip config of latest scan and std. config if no previous scan exists
@@ -18,15 +20,15 @@ modules:
      
   #module_1:
    # identifier: "otherone"
-    chip_1: # Arbitrary name of chip, defines folder name with chip data
+    chip_2: # Arbitrary name of chip, defines folder name with chip data
       chip_sn: "W05R24"
-      chip_id: 31
+      chip_id: 2  
       receiver: "rx3"
       chip_config_file: #'/home/pixlab/dgalacho/tj-monopix2-daq/tjmonopix2/default_badchip.cfg.yaml' 
 # If defined: use config from in file (either .cfg.yaml or .h5). If not defined use chip config of latest scan and std. config if no previous scan exists
       record_chip_status: True # Add chip statuses to the output files after the scan (link errors and powering infos)
       use_good_pixels_diff: False
-      # send_data: "tcp://127.0.0.1:5500" # Socket address of online monitor
+      send_data: "tcp://127.0.0.1:5501" # Socket address of online monitor
 
     # chip_0: # Arbitrary name of chip, defines folder name with chip data
     #   chip_sn: "W11R07"
