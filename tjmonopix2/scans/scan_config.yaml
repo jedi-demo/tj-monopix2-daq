@@ -1,18 +1,27 @@
 scan_configuration:
-  start_column: 0
+  start_column: 224
   stop_column: 447
   start_row: 0
   stop_row: 512
   col_bad: []
+  n_injections: 100
+  VCAL_LOW: 70
+  VCAL_HIGH: 140
+  VCAL_LOW_start: 140
+  VCAL_LOW_stop: 0
+  VCAL_LOW_step: -1
+  gdac_value_bits: [6, 5, 4, 3, 2, 1, 0]
+  scan_timeout: 300
+  tot_calib_file: None
 
 scan_configuration_per_chip:
 
   module_0:
     chip_0: #W05R24
-      start_column: 221
+      start_column: 0
       stop_column: 223
-      ruta_mask: output_data/module_0/chip_0/masked_pixels_good.yaml
-      col_bad: [44, 45, 118, 119, 239, 240]
+      ruta_mask: /home/pixlab/dgalacho/tj-monopix2-daq/tjmonopix2/scans/output_data/module_8/chip_0/20261015_085841_analog_scan/masked_pixels.yaml
+      col_bad: []
       n_injections: 100
       VCAL_HIGH: 140
       VCAL_LOW_start: 140
@@ -27,25 +36,38 @@ scan_configuration_per_chip:
       start_column: 0
       stop_column: 221
       
-  module_5:
+  module_8:
 
-    chip_0: #W15R12
-      start_column: 200
-      stop_column: 223
-      ruta_mask: output_data/module_0/chip_0/masked_pixels.yaml
-      col_bad: []
-      chip:
-        registers:
-          IBIAS: 100 #100
-          ITHR: 50
-          ICASN: 0
-    chip_1: #W05R24
-      start_column: 200
-      stop_column: 223
-      ruta_mask: output_data/module_0/chip_0/masked_pixels_good.yaml
+    chip_0: #W02R17
+      #start_column: 222
+      #stop_column: 223
+      ruta_mask: /home/pixlab/dgalacho/tj-monopix2-daq/tjmonopix2/scans/output_data/module_8/chip_0/20261015_085841_analog_scan/masked_pixels.yaml
+      col_bad: [224]
+      bcid_enabled: True
+      #chip:
+       # registers:
+        #  IBIAS: 100 #100
+         # ITHR: 64
+          #ICASN: 0
+    chip_1: #W15R12
+      #start_column: 222
+      #stop_column: 223
+      ruta_mask: /home/pixlab/dgalacho/tj-monopix2-daq/tjmonopix2/scans/output_data/module_8/chip_0/20261015_085841_analog_scan/masked_pixels.yaml
+      col_bad: [224]
+      bcid_enabled: True
+      #chip:
+       # registers:
+        #  IBIAS: 100 #100
+         # ITHR: 64
+          #ICASN: 0
+    chip_2: #W05R24
+      #start_column: 0
+      #stop_column: 223
+      ruta_mask: /home/pixlab/dgalacho/tj-monopix2-daq/tjmonopix2/scans/output_data/module_0/chip_0/masked_pixels_good.yaml
       col_bad: [44, 45, 118, 119, 239, 240]
-      chip:
-        registers:
-          IBIAS: 210 #210
-          ITHR: 0
-          ICASN: 120          
+      bcid_enabled: True
+      #chip:
+       # registers:
+        #  IBIAS: 210 #210
+         # ITHR: 0
+          #ICASN: 0 #45          

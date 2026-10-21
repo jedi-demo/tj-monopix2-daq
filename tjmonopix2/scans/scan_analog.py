@@ -12,13 +12,14 @@ from tjmonopix2.system.scan_base import ScanBase
 from tqdm import tqdm
 
 import yaml, json, argparse
+import numpy as np
 
 
 class AnalogScan(ScanBase):
     scan_id = 'analog_scan'
     is_parallel_scan = True  # Inject all chips at once using the broadcast chip ID
 
-    def _configure(self, start_column=0, stop_column=512, start_row=0, stop_row=512, ruta_mask="output_data/module_0/chip_0/masked_pixels.yaml", col_bad=[], **_):
+    def _configure(self, start_column=0, stop_column=512, start_row=0, stop_row=512, ruta_mask="output_data/module_0/chip_0/masked_pixels.yaml", col_bad=[], bcid_enabled=True, **_):
         self.chip.masks['enable'][start_column:stop_column, start_row:stop_row] = True
         self.chip.masks['injection'][start_column:stop_column, start_row:stop_row] = True
         self.chip.masks['tdac'][start_column:stop_column, start_row:stop_row] = 0b100
@@ -36,6 +37,8 @@ class AnalogScan(ScanBase):
 
 
         #col_bad = []
+        # W03R17
+        #col_bad += [224]
         # W05R24
         #col_bad += [44]
         #col_bad += [45]
@@ -61,9 +64,10 @@ class AnalogScan(ScanBase):
             # To enable it all the matrix (higher I_LV and Temp), use  self.chip._write_register(171+i, 0xffff)
             # To enable only the used columns, use  self.chip._write_register(171+i, v)
             # To disable BCID distribution in all columns, use  self.chip._write_register(171+i, 0)
-            self.chip._write_register(171+i, 0)
-            #self.chip._write_register(171+i, 0xffff)
-            #self.chip._write_register(171+i, 0)
+            if bcid_enabled:
+                self.chip._write_register(171+i, v)
+            else:
+                self.chip._write_register(171+i, 0)
             # EN_RO_RST_CONF
             self.chip._write_register(187+i, v)
             # EN_FREEZE_CONF
@@ -95,6 +99,8 @@ class AnalogScan(ScanBase):
         # # configuration to overwrite ITUNE
         # self.chip.registers["MON_EN_ITUNE"].write(0)
         # self.chip.registers["OVR_EN_ITUNE"].write(1) # 1 se voglio abilitare OVRITUNE
+        self.chip.registers["VL"].write(30)
+        self.chip.registers["VH"].write(150)
         self.chip.registers["SEL_PULSE_EXT_CONF"].write(0)
 
     def _scan(self, n_injections=100, **_):
@@ -123,5 +129,4 @@ if __name__ == "__main__":
     scan_configuration = config_data.get("scan_configuration")
     scan_configuration_per_chip = config_data.get("scan_configuration_per_chip")
     with AnalogScan(scan_config=scan_configuration,scan_config_per_chip=scan_configuration_per_chip) as scan:
-#with AnalogScan(scan_config=scan_configuration) as scan:
         scan.start()
