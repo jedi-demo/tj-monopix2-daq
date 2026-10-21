@@ -11,16 +11,17 @@ from tjmonopix2.scans.shift_and_inject import (get_scan_loop_mask_steps,
 from tjmonopix2.system.scan_base import ScanBase
 from tqdm import tqdm
 import yaml, json, argparse
+import numpy as np
 
 
 class ThresholdScan(ScanBase):
     scan_id = 'threshold_scan'
     is_parallel_scan = True
     
-    def _configure(self, start_column=0, stop_column=512, start_row=0, stop_row=512, ruta_mask="output_data/module_0/chip_0/masked_pixels.yaml", col_bad=[], **_):
+    def _configure(self, start_column=0, stop_column=512, start_row=0, stop_row=512, ruta_mask="output_data/module_0/chip_0/masked_pixels.yaml", col_bad=[], bcid_enabled=True, **_):
         self.chip.masks['enable'][start_column:stop_column, start_row:stop_row] = True
         self.chip.masks['injection'][start_column:stop_column, start_row:stop_row] = True
-
+        #self.chip.masks['tdac'][start_column:stop_column, start_row:stop_row] = np.load(f"TDAC_{self.chip.chip_sn}_70vcal.npy")
         # # Read masked pixels from masked_pixels.yaml
         with open(ruta_mask) as f:
             masked_pixels = yaml.full_load(f)
@@ -58,9 +59,11 @@ class ThresholdScan(ScanBase):
             # To enable it all the matrix (higher I_LV and Temp), use  self.chip._write_register(171+i, 0xffff)
             # To enable only the used columns, use  self.chip._write_register(171+i, v)
             # To disable BCID distribution in all columns, use  self.chip._write_register(171+i, 0)
-            self.chip._write_register(171+i, 0)
-            #self.chip._write_register(171+i, 0xffff)
-            #self.chip._write_register(171+i, 0)
+            if bcid_enabled:
+                self.chip._write_register(171+i, v)
+            else:
+                self.chip._write_register(171+i, 0)
+                
             # EN_RO_RST_CONF
             self.chip._write_register(187+i, v)
             # EN_FREEZE_CONF
@@ -109,7 +112,7 @@ class ThresholdScan(ScanBase):
                 chip.registers["VL"].write(vcal_low)
 
                 self.store_scan_par_values(scan_param_id=scan_param_id, vcal_high=VCAL_HIGH, vcal_low=vcal_low)
-                with self.readout(scan_param_id=scan_param_id):
+                with self.readout(scan_param_id=scan_param_id,timeout=0.001):
                     shift_and_inject(chip=chip, n_injections=n_injections, pbar=pbar, scan_param_id=scan_param_id, masks=masks)
             pbar.close()
         self.log.success('Scan finished')
@@ -129,6 +132,5 @@ if __name__ == "__main__":
         config_data = yaml.full_load(f)
     scan_configuration = config_data.get("scan_configuration")
     scan_configuration_per_chip = config_data.get("scan_configuration_per_chip")
-    with ThresholdScan(scan_config=scan_configuration,scan_config_per_chip=scan_configuration_per_chip) as scan:
-        #with ThresholdScan(scan_config=scan_configuration) as scan:
+    with ThresholdScan(scan_config=scan_configuration, scan_config_per_chip=scan_configuration_per_chip) as scan:
         scan.start()
