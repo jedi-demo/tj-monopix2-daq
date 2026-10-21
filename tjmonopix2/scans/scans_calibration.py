@@ -48,8 +48,9 @@ class CalibrationScan():
     scan_id = 'calibration_scan'
     stop_scan = threading.Event()
 
-    def __init__(self, scan_config, bench_config=None):
+    def __init__(self, scan_config, scan_config_per_chip=None, bench_config=None):
         self.scan_config = scan_config
+        self.scan_config_per_chip = scan_config_per_chip
         self.bench_config = bench_config
 
     def run_calibrations(self):
